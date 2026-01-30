@@ -50,7 +50,9 @@ AVAILABLE_MODELS = {
         "default_steps": 4,
         "max_steps": 8,
         "pipeline_class": "Flux2KleinPipeline",
-        "vram": "~13GB"
+        "vram": "~13GB",
+        "distilled": True,
+        "default_guidance": 1.0
     },
     "klein-4b-fp8": {
         "id": "black-forest-labs/FLUX.2-klein-base-4b-fp8",
@@ -59,7 +61,9 @@ AVAILABLE_MODELS = {
         "default_steps": 4,
         "max_steps": 8,
         "pipeline_class": "Flux2KleinPipeline",
-        "vram": "~8GB"
+        "vram": "~8GB",
+        "distilled": True,
+        "default_guidance": 1.0
     },
     "klein-9b": {
         "id": "black-forest-labs/FLUX.2-klein-9B",
@@ -68,7 +72,9 @@ AVAILABLE_MODELS = {
         "default_steps": 4,
         "max_steps": 8,
         "pipeline_class": "Flux2KleinPipeline",
-        "vram": "~20GB"
+        "vram": "~20GB",
+        "distilled": True,
+        "default_guidance": 1.0
     },
     "dev": {
         "id": "black-forest-labs/FLUX.2-dev",
@@ -77,7 +83,9 @@ AVAILABLE_MODELS = {
         "default_steps": 28,
         "max_steps": 50,
         "pipeline_class": "Flux2Pipeline",
-        "vram": "~80GB"
+        "vram": "~80GB",
+        "distilled": False,
+        "default_guidance": 3.5
     }
 }
 
@@ -142,14 +150,14 @@ class GenerateRequest(BaseModel):
     width: Optional[int] = 1024
     height: Optional[int] = 1024
     num_inference_steps: Optional[int] = None
-    guidance_scale: Optional[float] = 4.0
+    guidance_scale: Optional[float] = None  # None = use model default (1.0 for distilled, 3.5 for dev)
     seed: Optional[int] = None
 
 class Img2ImgRequest(BaseModel):
     prompt: str
     strength: Optional[float] = 0.75
     num_inference_steps: Optional[int] = None
-    guidance_scale: Optional[float] = 4.0
+    guidance_scale: Optional[float] = None  # None = use model default (1.0 for distilled, 3.5 for dev)
     seed: Optional[int] = None
 
 class ModelSwitchRequest(BaseModel):
@@ -259,10 +267,11 @@ async def generate_image(request: GenerateRequest):
         raise HTTPException(status_code=503, detail="No model loaded")
     
     try:
-        # Determine number of steps
+        # Determine number of steps and guidance
         model_info = AVAILABLE_MODELS[model_state.current_model]
         num_steps = request.num_inference_steps or model_info["default_steps"]
         num_steps = min(num_steps, model_info["max_steps"])
+        guidance = request.guidance_scale if request.guidance_scale is not None else model_info["default_guidance"]
         
         # Set seed for reproducibility
         generator = None
@@ -271,7 +280,7 @@ async def generate_image(request: GenerateRequest):
             seed = torch.randint(0, 2**32, (1,)).item()
         generator = torch.Generator(device="cpu").manual_seed(seed)
         
-        logger.info(f"Generating image: prompt='{request.prompt[:50]}...', steps={num_steps}, seed={seed}")
+        logger.info(f"Generating image: prompt='{request.prompt[:50]}...', steps={num_steps}, guidance={guidance}, seed={seed}")
         
         # Generate image
         result = model_state.pipeline(
@@ -279,7 +288,7 @@ async def generate_image(request: GenerateRequest):
             width=request.width,
             height=request.height,
             num_inference_steps=num_steps,
-            guidance_scale=request.guidance_scale,
+            guidance_scale=guidance,
             generator=generator,
         )
         
@@ -334,24 +343,25 @@ async def image_to_image(
         if width != init_image.width or height != init_image.height:
             init_image = init_image.resize((width, height), Image.LANCZOS)
         
-        # Determine number of steps
+        # Determine number of steps and guidance
         model_info = AVAILABLE_MODELS[model_state.current_model]
         num_steps = num_inference_steps or model_info["default_steps"]
         num_steps = min(num_steps, model_info["max_steps"])
+        guidance = guidance_scale if guidance_scale is not None else model_info["default_guidance"]
         
         # Set seed
         if seed is None:
             seed = torch.randint(0, 2**32, (1,)).item()
         generator = torch.Generator(device="cpu").manual_seed(seed)
         
-        logger.info(f"Img2Img: prompt='{prompt[:50]}...', steps={num_steps}")
+        logger.info(f"Img2Img: prompt='{prompt[:50]}...', steps={num_steps}, guidance={guidance}")
         
         # Generate image (FLUX.2 Klein uses image as reference, doesn't use strength)
         result = model_state.pipeline(
             prompt=prompt,
             image=init_image,
             num_inference_steps=num_steps,
-            guidance_scale=guidance_scale,
+            guidance_scale=guidance,
             generator=generator,
         )
         

@@ -311,6 +311,80 @@ genDownloadBtn.addEventListener('click', () => {
 });
 
 // =============================================================================
+// Image Generator - Fullscreen Toggle
+// =============================================================================
+
+let fullscreenOverlay = null;
+
+genResultImage.addEventListener('dblclick', () => {
+    if (!generatedImageData) return;
+    toggleFullscreen();
+});
+
+function toggleFullscreen() {
+    if (fullscreenOverlay) {
+        // Exit fullscreen
+        fullscreenOverlay.style.opacity = '0';
+        setTimeout(() => {
+            if (fullscreenOverlay) {
+                document.body.removeChild(fullscreenOverlay);
+                fullscreenOverlay = null;
+            }
+        }, 200);
+        return;
+    }
+
+    // Create fullscreen overlay
+    fullscreenOverlay = document.createElement('div');
+    fullscreenOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        cursor: zoom-out;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    `;
+
+    const img = document.createElement('img');
+    img.src = `data:image/png;base64,${generatedImageData}`;
+    img.style.cssText = `
+        max-width: 95vw;
+        max-height: 95vh;
+        object-fit: contain;
+        border-radius: 8px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    `;
+
+    fullscreenOverlay.appendChild(img);
+    document.body.appendChild(fullscreenOverlay);
+
+    // Fade in
+    requestAnimationFrame(() => {
+        fullscreenOverlay.style.opacity = '1';
+    });
+
+    // Close on double-click or click
+    fullscreenOverlay.addEventListener('dblclick', toggleFullscreen);
+    fullscreenOverlay.addEventListener('click', toggleFullscreen);
+
+    // Close on Escape key
+    const escHandler = (e) => {
+        if (e.key === 'Escape' && fullscreenOverlay) {
+            toggleFullscreen();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+}
+
+// =============================================================================
 // Background Remover - Event Listeners
 // =============================================================================
 
