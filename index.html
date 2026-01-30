@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Background Remover | AI-Powered Image Processing</title>
+    <meta name="description" content="Remove image backgrounds instantly with AI. Free, private, and runs entirely in your browser.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-effects">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+
+    <main class="container">
+        <header class="header">
+            <h1 class="title">
+                <span class="title-icon">✨</span>
+                Background Remover
+            </h1>
+            <p class="subtitle">AI-powered background removal that runs entirely in your browser</p>
+        </header>
+
+        <section id="upload-section" class="upload-section">
+            <div id="drop-zone" class="drop-zone">
+                <div class="drop-zone-content">
+                    <div class="upload-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <h2 class="drop-zone-title">Drop your image here</h2>
+                    <p class="drop-zone-text">or click to browse</p>
+                    <p class="drop-zone-formats">Supports PNG, JPG, JPEG, WebP</p>
+                </div>
+                <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+            </div>
+        </section>
+
+        <section id="processing-section" class="processing-section hidden">
+            <div class="processing-card">
+                <div class="spinner"></div>
+                <h2 class="processing-title">Processing your image...</h2>
+                <p class="processing-text">Our AI is working its magic</p>
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <p id="progress-text" class="progress-text">Initializing AI model...</p>
+            </div>
+        </section>
+
+        <section id="result-section" class="result-section hidden">
+            <div class="result-header">
+                <h2 class="result-title">✅ Background Removed!</h2>
+                <div class="result-actions">
+                    <button id="download-btn" class="btn btn-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download PNG
+                    </button>
+                    <button id="new-image-btn" class="btn btn-secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                        New Image
+                    </button>
+                </div>
+            </div>
+
+            <div class="comparison-container">
+                <div class="image-card">
+                    <div class="image-card-header">
+                        <span class="image-label">Original</span>
+                        <span id="original-dimensions" class="image-dimensions"></span>
+                    </div>
+                    <div class="image-wrapper">
+                        <img id="original-image" class="preview-image" alt="Original image">
+                    </div>
+                </div>
+                <div class="comparison-arrow">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                        <polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </div>
+                <div class="image-card">
+                    <div class="image-card-header">
+                        <span class="image-label label-success">Processed</span>
+                        <span id="processed-dimensions" class="image-dimensions"></span>
+                    </div>
+                    <div class="image-wrapper checkered-bg">
+                        <img id="processed-image" class="preview-image" alt="Processed image with background removed">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>🔒 Your images never leave your browser — all processing happens locally</p>
+        </footer>
+    </main>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
