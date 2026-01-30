@@ -4,6 +4,9 @@ This document is intended for AI assistants and developers working on this codeb
 
 ## System Overview
 
+This app provides **two AI-powered features**, each with a different architecture:
+
+### Background Remover (Browser-based)
 ```mermaid
 flowchart LR
     A[User uploads image] --> B[app.js handles file]
@@ -15,14 +18,34 @@ flowchart LR
     G --> H[Display & download available]
 ```
 
+### FLUX.2 Image Generator (GPU-based)
+```mermaid
+flowchart LR
+    A[User enters prompt] --> B[app.js sends request]
+    B --> C[Python FastAPI Server :8000]
+    C --> D[Flux2KleinPipeline]
+    D --> E[Local GPU RTX 4070]
+    E --> F[Image generated]
+    F --> G[Base64 PNG returned]
+    G --> H[Display & download in browser]
+```
+
+## Two-Server Architecture
+
+| Server | Port | Purpose | Required For |
+|--------|------|---------|--------------|
+| http-server | 8080 | Serves frontend HTML/CSS/JS | Both features |
+| flux_server.py | 8000 | Python API for FLUX.2 GPU inference | Image Generator only |
+
 ## File Responsibilities
 
 ### `index.html`
 - **Purpose**: DOM structure and layout
 - **Key Sections**:
-  - `#upload-section`: Drop zone for file input
-  - `#processing-section`: Loading spinner and progress bar
-  - `#result-section`: Side-by-side comparison and download button
+  - `.sidebar`: Left navigation panel with icons for switching features
+  - `#bg-remover-panel`: Background Remover UI (upload, processing, result)
+  - `#image-gen-panel`: FLUX.2 Image Generator UI (prompt, settings, result)
+- **Panel System**: Uses `.panel.active` class for visibility, switched via sidebar nav
 - **Dependencies**: Loads `styles.css` and `app.js` (ES module)
 
 ### `styles.css`
@@ -31,17 +54,49 @@ flowchart LR
 - **Key Features**:
   - Glassmorphism effects (`backdrop-filter: blur`)
   - Animated gradient orbs in background
+  - Left sidebar with hover-expand labels
   - Checkered pattern for transparency preview
   - Mobile-first responsive breakpoints at 768px and 480px
 
 ### `app.js`
 - **Purpose**: Application logic and library integration
 - **Key Functions**:
-  - `handleFile(file)`: Validates and initiates processing
-  - `removeBackground(file)`: Calls the AI library with progress tracking
-  - `downloadImage()`: Creates download link for processed blob
+  - **Navigation**: Panel switching via `.nav-item` click handlers
+  - **Background Remover**: `handleFile()`, `removeBackground()`, `downloadImage()`
+  - **Image Generator**: `generateImage()`, mode toggle (text2img/img2img), FLUX API calls
   - `showSection(name)`: Manages UI state transitions
   - `showError(message)`: Toast notification system
+- **API Configuration**: `FLUX_API_BASE = 'http://127.0.0.1:8000'`
+
+### `server/` Directory (Python Backend)
+
+#### `server/flux_server.py`
+- **Purpose**: FastAPI server for FLUX.2 GPU inference
+- **Key Endpoints**:
+  - `GET /api/health`: Health check with CUDA status
+  - `GET /api/models`: List available models
+  - `POST /api/generate`: Text-to-image generation
+  - `POST /api/img2img`: Image-to-image editing
+  - `POST /api/load-model`: Switch between models
+- **Model Loading**: Auto-selects model based on available VRAM
+- **Pipeline**: Uses `Flux2KleinPipeline` from diffusers (git main branch)
+
+#### `server/requirements.txt`
+Python dependencies:
+```
+torch>=2.1.0 (with CUDA)
+diffusers (from git main)
+transformers, accelerate, safetensors
+fastapi, uvicorn, python-multipart, pillow
+```
+
+### FLUX.2 Models Supported
+
+| Model Key | Hugging Face ID | VRAM | License |
+|-----------|-----------------|------|---------|
+| `klein-4b` | `black-forest-labs/FLUX.2-klein-4B` | ~13GB | Apache 2.0 |
+| `klein-9b` | `black-forest-labs/FLUX.2-klein-9B` | ~20GB | Non-commercial |
+| `dev` | `black-forest-labs/FLUX.2-dev` | ~80GB | Non-commercial |
 
 ## External Dependencies
 
