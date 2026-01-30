@@ -274,6 +274,10 @@ async function generateImage() {
 
         genResultImage.src = `data:image/png;base64,${result.image}`;
         genSeedDisplay.textContent = `Seed: ${result.seed}`;
+
+        // Show result, hide placeholder
+        const placeholder = document.getElementById('gen-result-placeholder');
+        if (placeholder) placeholder.classList.add('hidden');
         genResult.classList.remove('hidden');
 
     } catch (error) {
