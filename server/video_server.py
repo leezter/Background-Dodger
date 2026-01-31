@@ -261,25 +261,29 @@ async def generate_video(
         image_data = await image.read()
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
         
-        # CogVideoX supports multiple resolutions
-        # Determine best target based on aspect ratio
+        # CogVideoX-5b-I2V (diffusers) strictly requires 720x480
+        target_width, target_height = 720, 480
+        
+        # Get input dimensions
         width, height = input_image.size
-        aspect_ratio = width / height
         
-        # Choose target dimensions based on aspect ratio
-        if 0.9 <= aspect_ratio <= 1.1:
-            # Square-ish image -> use 480x480
-            target_width, target_height = 480, 480
-        elif aspect_ratio > 1.1:
-            # Landscape image -> use 720x480
-            target_width, target_height = 720, 480
-        else:
-            # Portrait image -> use 480x720
-            target_width, target_height = 480, 720
+        # Calculate resize ratio to fill the target dimensions (cover)
+        ratio = max(target_width / width, target_height / height)
+        new_width = int(width * ratio)
+        new_height = int(height * ratio)
         
-        if width != target_width or height != target_height:
-            input_image = input_image.resize((target_width, target_height), Image.LANCZOS)
-            logger.info(f"Resized input image from {width}x{height} to {target_width}x{target_height}")
+        # Resize the image
+        input_image = input_image.resize((new_width, new_height), Image.LANCZOS)
+        
+        # Center crop to target dimensions
+        left = (new_width - target_width) // 2
+        top = (new_height - target_height) // 2
+        right = left + target_width
+        bottom = top + target_height
+        
+        input_image = input_image.crop((left, top, right, bottom))
+        
+        logger.info(f"Prepared input image: Original {width}x{height} -> Resized {new_width}x{new_height} -> Cropped to {target_width}x{target_height}")
         
         # Clamp parameters
         num_frames = max(9, min(num_frames, 49))  # CogVideoX-5b-I2V limit
