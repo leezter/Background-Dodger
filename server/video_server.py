@@ -74,12 +74,20 @@ def load_video_model():
         
         # Try to use torchao for INT8 quantization (if available)
         try:
-            from torchao.quantization import quantize_, int8_weight_only
+            from torchao.quantization import quantize_, Int8WeightOnlyConfig
             use_quantization = True
-            logger.info("Using torchao INT8 quantization for reduced VRAM")
+            quant_config = Int8WeightOnlyConfig()
+            logger.info("Using torchao INT8 quantization (Int8WeightOnlyConfig) for reduced VRAM")
         except ImportError:
-            use_quantization = False
-            logger.warning("torchao not available, loading without quantization (higher VRAM usage)")
+            # Fallback for older torchao versions or if import fails
+            try:
+                from torchao.quantization import quantize_, int8_weight_only
+                use_quantization = True
+                quant_config = int8_weight_only()
+                logger.info("Using torchao INT8 quantization (int8_weight_only) for reduced VRAM")
+            except ImportError:
+                use_quantization = False
+                logger.warning("torchao not available, loading without quantization (higher VRAM usage)")
         
         repo_id = COGVIDEO_MODEL["repo_id"]
         
@@ -89,21 +97,21 @@ def load_video_model():
             repo_id, subfolder="text_encoder", torch_dtype=video_state.dtype
         )
         if use_quantization:
-            quantize_(text_encoder, int8_weight_only())
+            quantize_(text_encoder, quant_config)
         
         logger.info("Loading transformer...")
         transformer = CogVideoXTransformer3DModel.from_pretrained(
             repo_id, subfolder="transformer", torch_dtype=video_state.dtype
         )
         if use_quantization:
-            quantize_(transformer, int8_weight_only())
+            quantize_(transformer, quant_config)
         
         logger.info("Loading VAE...")
         vae = AutoencoderKLCogVideoX.from_pretrained(
             repo_id, subfolder="vae", torch_dtype=video_state.dtype
         )
         if use_quantization:
-            quantize_(vae, int8_weight_only())
+            quantize_(vae, quant_config)
         
         # Create pipeline with quantized components
         logger.info("Creating pipeline...")
