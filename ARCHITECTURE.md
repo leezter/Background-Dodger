@@ -35,8 +35,8 @@ flowchart LR
 flowchart LR
     A[User uploads image + prompt] --> B[app.js sends request]
     B --> C[Python FastAPI Server :8001]
-    C --> D[CogVideoX-1.5-I2V Pipeline]
-    D --> E[Local GPU]
+    C --> D[CogVideoX-5b-I2V Pipeline]
+    D --> E[Local GPU with INT8 quantization]
     E --> F[Video frames generated]
     F --> G[MP4 encoded]
     G --> H[Base64 MP4 returned]
