@@ -389,6 +389,215 @@ function toggleFullscreen() {
 }
 
 // =============================================================================
+// Video Generator - Configuration
+// =============================================================================
+
+const VIDEO_API_BASE = 'http://127.0.0.1:8001';
+
+// =============================================================================
+// Video Generator - DOM Elements
+// =============================================================================
+
+const videoSourceDropZone = document.getElementById('video-source-drop-zone');
+const videoSourceFileInput = document.getElementById('video-source-file-input');
+const videoSourcePreviewContainer = document.getElementById('video-source-preview-container');
+const videoSourcePreview = document.getElementById('video-source-preview');
+const videoSourceClear = document.getElementById('video-source-clear');
+const videoPromptInput = document.getElementById('video-prompt-input');
+const videoFramesSelect = document.getElementById('video-frames-select');
+const videoFpsSelect = document.getElementById('video-fps-select');
+const videoStepsInput = document.getElementById('video-steps-input');
+const videoSeedInput = document.getElementById('video-seed-input');
+const videoGuidanceSlider = document.getElementById('video-guidance-slider');
+const videoGuidanceValue = document.getElementById('video-guidance-value');
+const videoGenerateBtn = document.getElementById('video-generate-btn');
+const videoGenStatus = document.getElementById('video-gen-status');
+const videoGenStatusText = document.getElementById('video-gen-status-text');
+const videoResult = document.getElementById('video-result');
+const videoResultPlayer = document.getElementById('video-result-player');
+const videoDownloadBtn = document.getElementById('video-download-btn');
+const videoSeedDisplay = document.getElementById('video-seed-display');
+
+// Video Generator State
+let videoSourceFile = null;
+let generatedVideoData = null;
+let lastVideoSeed = null;
+
+// =============================================================================
+// Video Generator - Source Image Upload
+// =============================================================================
+
+videoSourceDropZone.addEventListener('click', () => videoSourceFileInput.click());
+
+videoSourceFileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        handleVideoSourceFile(e.target.files[0]);
+    }
+});
+
+videoSourceDropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    videoSourceDropZone.classList.add('drag-over');
+});
+
+videoSourceDropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    videoSourceDropZone.classList.remove('drag-over');
+});
+
+videoSourceDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    videoSourceDropZone.classList.remove('drag-over');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && isValidImageType(files[0])) {
+        handleVideoSourceFile(files[0]);
+    }
+});
+
+videoSourceClear.addEventListener('click', () => {
+    videoSourceFile = null;
+    videoSourceFileInput.value = '';
+    videoSourcePreviewContainer.classList.add('hidden');
+    videoSourceDropZone.classList.remove('hidden');
+});
+
+function handleVideoSourceFile(file) {
+    videoSourceFile = file;
+    const url = URL.createObjectURL(file);
+    videoSourcePreview.src = url;
+    videoSourceDropZone.classList.add('hidden');
+    videoSourcePreviewContainer.classList.remove('hidden');
+}
+
+// =============================================================================
+// Video Generator - Sliders
+// =============================================================================
+
+videoGuidanceSlider.addEventListener('input', () => {
+    videoGuidanceValue.textContent = videoGuidanceSlider.value;
+});
+
+// =============================================================================
+// Video Generator - Generate Video
+// =============================================================================
+
+videoGenerateBtn.addEventListener('click', generateVideo);
+
+async function generateVideo() {
+    const prompt = videoPromptInput.value.trim();
+
+    if (!videoSourceFile) {
+        showError('Please upload a source image first');
+        return;
+    }
+
+    if (!prompt) {
+        showError('Please enter a prompt describing how to animate the image');
+        return;
+    }
+
+    // Show loading state
+    videoGenerateBtn.disabled = true;
+    videoGenStatus.classList.remove('hidden');
+    videoGenStatusText.textContent = 'Connecting to CogVideoX server...';
+
+    try {
+        // Check if server is available
+        const healthCheck = await fetch(`${VIDEO_API_BASE}/api/video/health`).catch(() => null);
+
+        if (!healthCheck || !healthCheck.ok) {
+            throw new Error('Cannot connect to video server. Make sure video_server.py is running on port 8001.');
+        }
+
+        const healthData = await healthCheck.json();
+        if (!healthData.model_loaded) {
+            videoGenStatusText.textContent = 'Loading CogVideoX model (this may take 1-2 minutes on first run)...';
+        } else {
+            videoGenStatusText.textContent = 'Generating video (this may take 2-5 minutes)...';
+        }
+
+        // Build form data with image for I2V
+        const formData = new FormData();
+        formData.append('image', videoSourceFile);
+        formData.append('prompt', prompt);
+        formData.append('num_frames', videoFramesSelect.value);
+        formData.append('fps', videoFpsSelect.value);
+        formData.append('num_inference_steps', videoStepsInput.value || '50');
+        formData.append('guidance_scale', videoGuidanceSlider.value);
+
+        if (videoSeedInput.value) {
+            formData.append('seed', videoSeedInput.value);
+        }
+
+        const response = await fetch(`${VIDEO_API_BASE}/api/video/generate`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Video generation failed');
+        }
+
+        // Display result
+        generatedVideoData = result.video;
+        lastVideoSeed = result.seed;
+
+        // Convert base64 to blob URL for video player
+        const byteCharacters = atob(result.video);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'video/mp4' });
+        const videoUrl = URL.createObjectURL(blob);
+
+        videoResultPlayer.src = videoUrl;
+        videoSeedDisplay.textContent = `Seed: ${result.seed}`;
+
+        // Show result, hide placeholder
+        const placeholder = document.getElementById('video-result-placeholder');
+        if (placeholder) placeholder.classList.add('hidden');
+        videoResult.classList.remove('hidden');
+
+    } catch (error) {
+        console.error('Video generation failed:', error);
+        showError(error.message || 'Failed to generate video');
+    } finally {
+        videoGenerateBtn.disabled = false;
+        videoGenStatus.classList.add('hidden');
+    }
+}
+
+// =============================================================================
+// Video Generator - Download
+// =============================================================================
+
+videoDownloadBtn.addEventListener('click', () => {
+    if (!generatedVideoData) return;
+
+    // Convert base64 to blob
+    const byteCharacters = atob(generatedVideoData);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'video/mp4' });
+
+    // Download
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `cogvideo_generation_${lastVideoSeed || Date.now()}.mp4`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+});
+
+// =============================================================================
 // Background Remover - Event Listeners
 // =============================================================================
 

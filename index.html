@@ -49,6 +49,14 @@
                     </svg>
                     <span class="nav-label">Image Gen</span>
                 </button>
+                <button class="nav-item" data-panel="video-gen" title="Video Generator">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
+                        <polygon points="10 8 16 12 10 16 10 8" />
+                    </svg>
+                    <span class="nav-label">Video Gen</span>
+                </button>
             </nav>
             <div class="sidebar-footer">
                 <div class="sidebar-badge">AI</div>
@@ -338,6 +346,164 @@
 
                     <footer class="footer">
                         <p>⚡ Powered by FLUX.2 — running locally on your GPU</p>
+                    </footer>
+                </main>
+            </div>
+
+            <!-- Video Generator Panel -->
+            <div id="video-gen-panel" class="panel">
+                <main class="container">
+                    <!-- Generator Controls -->
+                    <section class="generator-section">
+                        <div class="generator-card">
+                            <!-- Scrollable content area -->
+                            <div class="generator-card-content">
+                                <!-- Source Image Upload -->
+                                <div class="form-group">
+                                    <label class="form-label">Source Image</label>
+                                    <div id="video-source-drop-zone" class="drop-zone drop-zone-small">
+                                        <div class="drop-zone-content">
+                                            <div class="upload-icon-small">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                    <polyline points="17 8 12 3 7 8" />
+                                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                                </svg>
+                                            </div>
+                                            <p class="drop-zone-text-small">Drop image or click to browse</p>
+                                        </div>
+                                        <input type="file" id="video-source-file-input"
+                                            accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                    </div>
+                                    <div id="video-source-preview-container" class="img2img-preview hidden">
+                                        <img id="video-source-preview" class="img2img-preview-image" alt="Source image">
+                                        <button id="video-source-clear" class="img2img-clear-btn"
+                                            title="Clear image">×</button>
+                                    </div>
+                                </div>
+
+                                <!-- Prompt Input -->
+                                <div class="form-group">
+                                    <label class="form-label">Prompt</label>
+                                    <textarea id="video-prompt-input" class="form-textarea" rows="3"
+                                        placeholder="Describe how you want the image to animate..."></textarea>
+                                </div>
+
+                                <!-- Advanced Settings (collapsible) -->
+                                <details class="advanced-settings">
+                                    <summary class="advanced-summary">Advanced Settings</summary>
+                                    <div class="advanced-content">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label">Frames</label>
+                                                <select id="video-frames-select" class="form-select">
+                                                    <option value="17">17</option>
+                                                    <option value="25">25</option>
+                                                    <option value="33">33</option>
+                                                    <option value="41">41</option>
+                                                    <option value="49" selected>49</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">FPS</label>
+                                                <select id="video-fps-select" class="form-select">
+                                                    <option value="4">4 (slower)</option>
+                                                    <option value="8" selected>8 (default)</option>
+                                                    <option value="12">12 (faster)</option>
+                                                    <option value="16">16 (fast)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label">Steps</label>
+                                                <input type="number" id="video-steps-input" class="form-input"
+                                                    placeholder="50" min="10" max="100" value="50">
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">Seed</label>
+                                                <input type="number" id="video-seed-input" class="form-input"
+                                                    placeholder="Random">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group" style="flex: 1;">
+                                                <label class="form-label">Guidance: <span
+                                                        id="video-guidance-value">6.0</span></label>
+                                                <input type="range" id="video-guidance-slider" class="form-range"
+                                                    min="1" max="15" step="0.5" value="6.0">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+
+                            <!-- Fixed footer with button and status -->
+                            <div class="generator-card-footer">
+                                <button id="video-generate-btn" class="btn btn-primary btn-large">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <polygon points="10 8 16 12 10 16 10 8" />
+                                        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
+                                    </svg>
+                                    Generate Video
+                                </button>
+
+                                <!-- Status -->
+                                <div id="video-gen-status" class="gen-status hidden">
+                                    <div class="spinner-small"></div>
+                                    <span id="video-gen-status-text">Connecting to server...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Title + Result -->
+                        <div class="generator-right">
+                            <header class="header">
+                                <h1 class="title">
+                                    <span class="title-icon">🎬</span>
+                                    Video Generator
+                                </h1>
+                                <p class="subtitle">AI-powered image-to-video using CogVideoX-5b-I2V on your local GPU
+                                </p>
+                            </header>
+
+                            <!-- Result Display -->
+                            <div id="video-result" class="gen-result hidden">
+                                <div class="gen-result-header">
+                                    <h3 class="gen-result-title">Generated Video</h3>
+                                    <div class="gen-result-actions">
+                                        <button id="video-download-btn" class="btn btn-primary btn-small">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                <polyline points="7 10 12 15 17 10" />
+                                                <line x1="12" y1="15" x2="12" y2="3" />
+                                            </svg>
+                                            Download
+                                        </button>
+                                        <span id="video-seed-display" class="gen-seed">Seed: —</span>
+                                    </div>
+                                </div>
+                                <div class="video-result-wrapper">
+                                    <video id="video-result-player" class="video-result-player" controls loop autoplay
+                                        muted></video>
+                                </div>
+                            </div>
+
+                            <!-- Placeholder when no video generated -->
+                            <div id="video-result-placeholder" class="gen-result-placeholder">
+                                <span>Your generated video will appear here</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <footer class="footer">
+                        <p>🎬 Powered by CogVideoX — running locally on your GPU</p>
                     </footer>
                 </main>
             </div>

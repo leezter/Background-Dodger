@@ -1012,6 +1012,39 @@ body {
 }
 
 /* ============================================
+   Video Generator Panel
+   ============================================ */
+#video-gen-panel .container {
+    max-width: none;
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+#video-gen-panel .header {
+    margin-bottom: 0;
+    padding-top: 0;
+    flex: 1;
+}
+
+/* Video Result Player */
+.video-result-wrapper {
+    flex: 1;
+    padding: var(--spacing-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--color-bg-secondary);
+}
+
+.video-result-player {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: var(--radius-sm);
+    background: #000;
+}
+
+/* ============================================
    Footer
    ============================================ */
 .footer {

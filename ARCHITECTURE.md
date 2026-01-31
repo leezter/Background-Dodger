@@ -30,12 +30,26 @@ flowchart LR
     G --> H[Display & download in browser]
 ```
 
-## Two-Server Architecture
+### CogVideoX Video Generator (GPU-based)
+```mermaid
+flowchart LR
+    A[User uploads image + prompt] --> B[app.js sends request]
+    B --> C[Python FastAPI Server :8001]
+    C --> D[CogVideoX-1.5-I2V Pipeline]
+    D --> E[Local GPU]
+    E --> F[Video frames generated]
+    F --> G[MP4 encoded]
+    G --> H[Base64 MP4 returned]
+    H --> I[Video player in browser]
+```
+
+## Three-Server Architecture
 
 | Server | Port | Purpose | Required For |
 |--------|------|---------|--------------|
-| http-server | 8080 | Serves frontend HTML/CSS/JS | Both features |
+| http-server | 8080 | Serves frontend HTML/CSS/JS | All features |
 | flux_server.py | 8000 | Python API for FLUX.2 GPU inference | Image Generator only |
+| video_server.py | 8001 | Python API for CogVideoX I2V | Video Generator only |
 
 ## File Responsibilities
 
