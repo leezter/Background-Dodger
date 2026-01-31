@@ -253,13 +253,20 @@ async def generate_video(
         image_data = await image.read()
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
         
-        # CogVideoX expects specific dimensions - resize if needed
-        # The model works best with 720x480 or 480x720
+        # CogVideoX supports multiple resolutions
+        # Determine best target based on aspect ratio
         width, height = input_image.size
-        target_width, target_height = 720, 480
+        aspect_ratio = width / height
         
-        # Determine orientation
-        if height > width:
+        # Choose target dimensions based on aspect ratio
+        if 0.9 <= aspect_ratio <= 1.1:
+            # Square-ish image -> use 480x480
+            target_width, target_height = 480, 480
+        elif aspect_ratio > 1.1:
+            # Landscape image -> use 720x480
+            target_width, target_height = 720, 480
+        else:
+            # Portrait image -> use 480x720
             target_width, target_height = 480, 720
         
         if width != target_width or height != target_height:
