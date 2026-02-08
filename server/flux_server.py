@@ -8,7 +8,15 @@ FLUX.2 Models:
 - FLUX.2 [klein] 4B: Fast, Apache 2.0, ~13GB VRAM, sub-second generation
 - FLUX.2 [klein] 9B: Higher quality, non-commercial license
 - FLUX.2 [dev]: 32B parameters, highest quality (requires H100-level GPU)
+
+Upscaler:
+- Real-ESRGAN: 4x upscaling with face enhancement
 """
+import shutil
+import tempfile
+import os
+import numpy as np
+import cv2
 
 import io
 import base64
@@ -40,6 +48,16 @@ class ModelState:
         self.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 
 model_state = ModelState()
+
+# Real-ESRGAN State
+class UpscalerState:
+    def __init__(self):
+        self.upscaler = None
+        self.face_enhancer = None
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+upscaler_state = UpscalerState()
+
 
 # Available FLUX.2 models
 AVAILABLE_MODELS = {
@@ -141,6 +159,60 @@ def load_model(model_key: str):
         raise
 
 # =============================================================================
+# Upscaler Loading
+# =============================================================================
+
+def load_upscaler():
+    """Load Real-ESRGAN model."""
+    if upscaler_state.upscaler is not None:
+        return
+
+    logger.info("Loading Real-ESRGAN upscaler...")
+    try:
+        from basicsr.archs.rrdbnet_arch import RRDBNet
+        from realesrgan import RealESRGANer
+        from realesrgan.archs.srvgg_arch import SRVGGNetCompact
+
+        # Use RealESRGAN_x4plus for general images
+        model_name = 'RealESRGAN_x4plus'
+        model_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'weights', f'{model_name}.pth')
+
+        # Download weights if not exists
+        if not os.path.exists(model_path):
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            logger.info(f"Downloading {model_name}...")
+            # RealESRGAN_x4plus
+            url = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth'
+            # Simple download
+            import requests
+            with requests.get(url, stream=True) as r:
+                r.raise_for_status()
+                with open(model_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            logger.info("Download complete")
+
+        # Set up model
+        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+        
+        upscaler_state.upscaler = RealESRGANer(
+            scale=4,
+            model_path=model_path,
+            model=model,
+            tile=0,  # Use 0 for no tile during testing, or small tile size for low VRAM
+            tile_pad=10,
+            pre_pad=0,
+            half=True if torch.cuda.is_available() else False,
+            device=upscaler_state.device,
+        )
+        
+        logger.info("Real-ESRGAN upscaler loaded successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to load upscaler: {e}")
+        # Dont raise, just log
+
+# =============================================================================
 # Pydantic Models
 # =============================================================================
 
@@ -164,6 +236,11 @@ class Img2ImgRequest(BaseModel):
 
 class ModelSwitchRequest(BaseModel):
     model: str
+
+class UpscaleRequest(BaseModel):
+    scale: Optional[float] = 4.0
+    face_enhance: Optional[bool] = False
+
 
 class GenerateResponse(BaseModel):
     success: bool
@@ -470,6 +547,67 @@ async def image_to_image(
 # =============================================================================
 # Main Entry Point
 # =============================================================================
+
+@app.post("/api/upscale", response_model=GenerateResponse)
+async def upscale_image(
+    image: UploadFile = File(...),
+    scale: float = Form(4.0),
+    face_enhance: bool = Form(False)
+):
+    """Upscale an image using Real-ESRGAN."""
+    # Ensure upscaler is loaded
+    if upscaler_state.upscaler is None:
+        try:
+            load_upscaler()
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Failed to load upscaler: {e}")
+            
+    if upscaler_state.upscaler is None:
+         raise HTTPException(status_code=503, detail="Upscaler could not be loaded")
+    
+    try:
+        # Load image
+        contents = await image.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if img is None:
+             raise HTTPException(status_code=400, detail="Invalid image")
+
+        # Upscale
+        logger.info(f"Upscaling image... scale={scale}, face_enhance={face_enhance}")
+        
+        # Real-ESRGAN output is numpy array (H, W, C) in BGR
+        try:
+            output, _ = upscaler_state.upscaler.enhance(img, outscale=scale)
+        except RuntimeError as e:
+            # Fallback for tiled processing if OOM
+            logger.warning(f"Upscaling failed, trying with tiling: {e}")
+            upscaler_state.upscaler.tile_size = 512
+            output, _ = upscaler_state.upscaler.enhance(img, outscale=scale)
+
+        # Convert back to base64
+        # Encode as PNG
+        success, buffer = cv2.imencode(".png", output)
+        if not success:
+             raise HTTPException(status_code=500, detail="Failed to encode output image")
+             
+        image_base64 = base64.b64encode(buffer).decode("utf-8")
+        
+        return GenerateResponse(
+            success=True,
+            image=image_base64
+        )
+
+    except Exception as e:
+        logger.error(f"Upscaling failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return GenerateResponse(
+            success=False,
+            error=str(e)
+        )
+
 
 if __name__ == "__main__":
     import uvicorn

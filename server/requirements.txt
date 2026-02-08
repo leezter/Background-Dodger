@@ -13,3 +13,6 @@ sentencepiece>=0.2.0
 torchao>=0.4.0
 tiktoken>=0.5.0
 protobuf>=4.21.0
+realesrgan>=0.3.0
+opencv-python>=4.9.0
+basicsr>=1.4.2

@@ -57,6 +57,17 @@
                     </svg>
                     <span class="nav-label">Video Gen</span>
                 </button>
+                <button class="nav-item" data-panel="upscaler" title="Upscaler">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 16 12 12 8 16"></polyline>
+                        <line x1="12" y1="12" x2="12" y2="21"></line>
+                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+                        <polyline points="16 16 12 12 8 16"></polyline>
+                    </svg>
+                    <span class="nav-label">Upscaler</span>
+                </button>
+
             </nav>
             <div class="sidebar-footer">
                 <div class="sidebar-badge">AI</div>
@@ -550,6 +561,124 @@
                     </footer>
                 </main>
             </div>
+
+            <!-- Upscaler Panel -->
+            <div id="upscaler-panel" class="panel">
+                <main class="container">
+                    <!-- Generator Controls -->
+                    <section class="generator-section">
+                        <div class="generator-card">
+                            <!-- Scrollable content area -->
+                            <div class="generator-card-content">
+                                <!-- Source Image Upload -->
+                                <div class="form-group">
+                                    <label class="form-label">Source Image</label>
+                                    <div id="upscale-drop-zone" class="drop-zone drop-zone-small">
+                                        <div class="drop-zone-content">
+                                            <div class="upload-icon-small">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                    <polyline points="17 8 12 3 7 8" />
+                                                    <line x1="12" y1="3" x2="12" y2="15" />
+                                                </svg>
+                                            </div>
+                                            <p class="drop-zone-text-small">Drop image or click to browse</p>
+                                        </div>
+                                        <input type="file" id="upscale-file-input"
+                                            accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                    </div>
+                                    <div id="upscale-preview-container" class="img2img-preview hidden">
+                                        <img id="upscale-preview" class="img2img-preview-image" alt="Source image">
+                                        <button id="upscale-clear" class="img2img-clear-btn"
+                                            title="Clear image">×</button>
+                                    </div>
+                                </div>
+
+                                <!-- Settings -->
+                                <div class="form-group">
+                                    <label class="form-label">Scale Factor</label>
+                                    <select id="upscale-factor" class="form-select">
+                                        <option value="4.0" selected>4x (Real-ESRGAN)</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group-checkbox">
+                                    <input type="checkbox" id="upscale-face-enhance" class="form-checkbox">
+                                    <label for="upscale-face-enhance" class="form-label-checkbox">Face Enhancement
+                                        (GFPGAN) - Coming Soon</label>
+                                </div>
+
+                            </div>
+
+                            <!-- Fixed footer with button and status -->
+                            <div class="generator-card-footer">
+                                <button id="upscale-btn" class="btn btn-primary btn-large">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <polyline points="16 16 12 12 8 16"></polyline>
+                                        <line x1="12" y1="12" x2="12" y2="21"></line>
+                                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+                                        <polyline points="16 16 12 12 8 16"></polyline>
+                                    </svg>
+                                    Upscale Image
+                                </button>
+
+                                <!-- Status -->
+                                <div id="upscale-status" class="gen-status hidden">
+                                    <div class="spinner-small"></div>
+                                    <span id="upscale-status-text">Upscaling...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Title + Result -->
+                        <div class="generator-right">
+                            <header class="header">
+                                <h1 class="title">
+                                    <span class="title-icon">🔍</span>
+                                    Image Upscaler
+                                </h1>
+                                <p class="subtitle">Increase resolution and improve quality using Real-ESRGAN</p>
+                            </header>
+
+                            <!-- Result Display -->
+                            <div id="upscale-result" class="gen-result hidden">
+                                <div class="gen-result-header">
+                                    <h3 class="gen-result-title">Upscaled Image</h3>
+                                    <div class="gen-result-actions">
+                                        <button id="upscale-download-btn" class="btn btn-primary btn-small">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                <polyline points="7 10 12 15 17 10" />
+                                                <line x1="12" y1="15" x2="12" y2="3" />
+                                            </svg>
+                                            Download
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="upscale-result-wrapper">
+                                    <img id="upscale-result-image" class="preview-image" alt="Upscaled image">
+                                </div>
+                            </div>
+
+                            <!-- Placeholder when no image generated -->
+                            <div id="upscale-result-placeholder" class="gen-result-placeholder">
+                                <span>Your upscaled image will appear here</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <footer class="footer">
+                        <p>🔍 Powered by Real-ESRGAN — running locally</p>
+                    </footer>
+                </main>
+            </div>
+
         </div>
     </div>
 

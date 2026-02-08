@@ -18,16 +18,18 @@ flowchart LR
     G --> H[Display & download available]
 ```
 
-### FLUX.2 Image Generator (GPU-based)
+### FLUX.2 Image Generator & Upscaler (GPU-based)
 ```mermaid
 flowchart LR
-    A[User enters prompt] --> B[app.js sends request]
+    A[User requests generation/upscale] --> B[app.js sends request]
     B --> C[Python FastAPI Server :8000]
-    C --> D[Flux2KleinPipeline]
-    D --> E[Local GPU RTX 4070]
-    E --> F[Image generated]
-    F --> G[Base64 PNG returned]
-    G --> H[Display & download in browser]
+    C --> D{Task Type}
+    D -- Generate --> E[Flux2KleinPipeline]
+    D -- Upscale --> F[Real-ESRGAN Model]
+    E --> G[Local GPU]
+    F --> G
+    G --> H[Result Image (Base64 PNG)]
+    H --> I[Display in browser]
 ```
 
 ### CogVideoX Video Generator (GPU-based)
@@ -48,7 +50,7 @@ flowchart LR
 | Server | Port | Purpose | Required For |
 |--------|------|---------|--------------|
 | http-server | 8080 | Serves frontend HTML/CSS/JS | All features |
-| flux_server.py | 8000 | Python API for FLUX.2 GPU inference | Image Generator only |
+| flux_server.py | 8000 | Python API for FLUX.2 & Real-ESRGAN | Image Generator & Upscaler |
 | video_server.py | 8001 | Python API for CogVideoX I2V | Video Generator only |
 
 ## File Responsibilities
@@ -59,6 +61,7 @@ flowchart LR
   - `.sidebar`: Left navigation panel with icons for switching features
   - `#bg-remover-panel`: Background Remover UI (upload, processing, result)
   - `#image-gen-panel`: FLUX.2 Image Generator UI (prompt, settings, result)
+  - `#upscaler-panel`: Real-ESRGAN Upscaler UI (upload, 4x scale factor)
 - **Panel System**: Uses `.panel.active` class for visibility, switched via sidebar nav
 - **Dependencies**: Loads `styles.css` and `app.js` (ES module)
 
@@ -78,6 +81,7 @@ flowchart LR
   - **Navigation**: Panel switching via `.nav-item` click handlers
   - **Background Remover**: `handleFile()`, `removeBackground()`, `downloadImage()`
   - **Image Generator**: `generateImage()`, mode toggle (text2img/img2img), FLUX API calls
+  - **Upscaler**: `upscaleImage()`, handles file upload and `POST /api/upscale`
   - `showSection(name)`: Manages UI state transitions
   - `showError(message)`: Toast notification system
 - **API Configuration**: `FLUX_API_BASE = 'http://127.0.0.1:8000'`
@@ -89,15 +93,21 @@ flowchart LR
 - **Key Endpoints**:
   - `GET /api/health`: Health check with CUDA status
   - `GET /api/models`: List available models
-  - `POST /api/generate`: Text-to-image generation
-  - `POST /api/img2img`: Image-to-image editing
-  - `POST /api/load-model`: Switch between models
+  - `POST /api/generate`: Text-to-image generation (FLUX.2)
+  - `POST /api/img2img`: Image-to-image editing (FLUX.2)
+  - `POST /api/upscale`: Image upscaling (Real-ESRGAN)
+  - `POST /api/load-model`: Switch between FLUX models
 - **Model Loading**: Auto-selects model based on available VRAM
 - **Pipeline**: Uses `Flux2KleinPipeline` from diffusers (git main branch)
 - **Dual-Image Handling**:
   - `stitch_images(img1, img2)` helper function resizing both to same height
+  - `stitch_images(img1, img2)` helper function resizing both to same height
   - Concatenates images horizontally before passing to model
   - Allows single-image prompts to influence style/structure from two sources
+- **Upscaler Implementation**:
+  - Uses `RealESRGAN_x4plus` model
+  - Auto-downloads weights to `server/weights/` on first use
+  - Includes tiled processing fallback for VRAM-constrained scenarios
 
 #### `server/requirements.txt`
 Python dependencies:
@@ -106,6 +116,8 @@ torch>=2.1.0 (with CUDA)
 diffusers (from git main)
 transformers, accelerate, safetensors
 fastapi, uvicorn, python-multipart, pillow
+# Upscaler manual dependencies:
+basicsr, realesrgan, opencv-python
 ```
 
 ### FLUX.2 Models Supported

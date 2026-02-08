@@ -1,6 +1,6 @@
 # Background-Dodger
 
-A multi-purpose AI toolkit: **Background Remover** (browser-based), **FLUX.2 Image Generator** (local GPU), and **CogVideoX Video Generator** (local GPU). All processing happens locally — your data never leaves your device.
+A multi-purpose AI toolkit: **Background Remover** (browser-based), **FLUX.2 Image Generator** (local GPU), **CogVideoX Video Generator** (local GPU), and **Image Upscaler** (local GPU). All processing happens locally — your data never leaves your device.
 
 ## Quick Start
 
@@ -19,9 +19,12 @@ npx http-server . -p 8080
 cd server
 pip install -r requirements.txt
 pip install git+https://github.com/huggingface/diffusers.git
+# Manual install for upscaler dependencies
+pip install basicsr
+python -m pip install realesrgan opencv-python
 python flux_server.py
 ```
-Then open [http://localhost:8080](http://localhost:8080) and click the ⚡ icon in the sidebar.
+Then open [http://localhost:8080](http://localhost:8080) and click the ⚡ icon (Generator) or 🔍 icon (Upscaler) in the sidebar.
 
 ### With CogVideoX Video Generator (requires NVIDIA GPU)
 ```bash
@@ -52,6 +55,12 @@ Then open [http://localhost:8080](http://localhost:8080) and click the 🎬 icon
 - **Dual-Image Support**: Combine two source images for image-to-image generation
 - **Sub-Second**: ~0.5s generation time on modern GPUs
 - **Apache 2.0**: Klein 4B model is commercially usable
+
+### Image Upscaler
+- **Real-ESRGAN**: 4x resolution enhancement with high fidelity
+- **Face Enhancement**: Optional GFPGAN integration (planned) for face restoration
+- **Local Processing**: Runs on the same GPU server as FLUX.2
+- **Fallback**: Automatically uses tiled processing if VRAM is limited
 
 ### CogVideoX Video Generator
 - **Image-to-Video**: Animate still images with text prompts
@@ -84,6 +93,7 @@ BackgroundRemover/
 | UI | HTML5, CSS3, Vanilla JavaScript |
 | Background Removal | [@imgly/background-removal](https://github.com/imgly/background-removal-js) v1.5.1 |
 | Image Generation | [FLUX.2 Klein 4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) |
+| Image Upscaling | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) |
 | Video Generation | [CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V) |
 | Backend | FastAPI, PyTorch, Diffusers, TorchAO |
 | Fonts | [Inter](https://fonts.google.com/specimen/Inter) via Google Fonts |

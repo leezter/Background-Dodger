@@ -1075,3 +1075,152 @@ function transferImageToSlot(slotNumber) {
 
 // Initialize modal on load
 createSlotModal();
+
+// =============================================================================
+// Upscaler - DOM Elements
+// =============================================================================
+
+const upscaleDropZone = document.getElementById('upscale-drop-zone');
+const upscaleFileInput = document.getElementById('upscale-file-input');
+const upscalePreviewContainer = document.getElementById('upscale-preview-container');
+const upscalePreview = document.getElementById('upscale-preview');
+const upscaleClear = document.getElementById('upscale-clear');
+const upscaleBtn = document.getElementById('upscale-btn');
+const upscaleStatus = document.getElementById('upscale-status');
+const upscaleStatusText = document.getElementById('upscale-status-text');
+const upscaleResult = document.getElementById('upscale-result');
+const upscaleResultImage = document.getElementById('upscale-result-image');
+const upscaleDownloadBtn = document.getElementById('upscale-download-btn');
+const upscaleFactor = document.getElementById('upscale-factor');
+const upscaleFaceEnhance = document.getElementById('upscale-face-enhance');
+
+let upscaleFile = null;
+let upscaledImageData = null;
+
+// =============================================================================
+// Upscaler - Event Listeners
+// =============================================================================
+
+if (upscaleDropZone) {
+    upscaleDropZone.addEventListener('click', () => upscaleFileInput.click());
+
+    upscaleFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleUpscaleFile(e.target.files[0]);
+        }
+    });
+
+    upscaleDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        upscaleDropZone.classList.add('drag-over');
+    });
+
+    upscaleDropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        upscaleDropZone.classList.remove('drag-over');
+    });
+
+    upscaleDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        upscaleDropZone.classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && isValidImageType(files[0])) {
+            handleUpscaleFile(files[0]);
+        }
+    });
+}
+
+if (upscaleClear) {
+    upscaleClear.addEventListener('click', () => {
+        upscaleFile = null;
+        upscaleFileInput.value = '';
+        upscalePreviewContainer.classList.add('hidden');
+        upscaleDropZone.classList.remove('hidden');
+    });
+}
+
+function handleUpscaleFile(file) {
+    upscaleFile = file;
+    const url = URL.createObjectURL(file);
+    upscalePreview.src = url;
+    upscaleDropZone.classList.add('hidden');
+    upscalePreviewContainer.classList.remove('hidden');
+}
+
+// =============================================================================
+// Upscaler - Logic
+// =============================================================================
+
+if (upscaleBtn) {
+    upscaleBtn.addEventListener('click', upscaleImage);
+}
+
+async function upscaleImage() {
+    if (!upscaleFile) {
+        showError('Please upload an image to upscale');
+        return;
+    }
+
+    // Show loading state
+    upscaleBtn.disabled = true;
+    upscaleStatus.classList.remove('hidden');
+    upscaleStatusText.textContent = 'Connecting to FLUX server...';
+
+    try {
+        // Check if server is available (Upscaler is on FLUX server port 8000)
+        const healthCheck = await fetch(`${FLUX_API_BASE}/api/health`).catch(() => null);
+
+        if (!healthCheck || !healthCheck.ok) {
+            throw new Error('Cannot connect to FLUX server. Make sure the Python backend is running on port 8000.');
+        }
+
+        upscaleStatusText.textContent = 'Upscaling image (this may take 10-20 seconds)...';
+
+        const formData = new FormData();
+        formData.append('image', upscaleFile);
+        formData.append('scale', upscaleFactor.value);
+        formData.append('face_enhance', upscaleFaceEnhance.checked);
+
+        const response = await fetch(`${FLUX_API_BASE}/api/upscale`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Upscaling failed');
+        }
+
+        // Display result
+        upscaledImageData = result.image;
+        upscaleResultImage.src = `data:image/png;base64,${result.image}`;
+
+        // Show result, hide placeholder
+        const placeholder = document.getElementById('upscale-result-placeholder');
+        if (placeholder) placeholder.classList.add('hidden');
+        upscaleResult.classList.remove('hidden');
+
+    } catch (error) {
+        console.error('Upscaling failed:', error);
+        showError(error.message || 'Failed to upscale image');
+    } finally {
+        upscaleBtn.disabled = false;
+        upscaleStatus.classList.add('hidden');
+    }
+}
+
+if (upscaleDownloadBtn) {
+    upscaleDownloadBtn.addEventListener('click', () => {
+        if (!upscaledImageData) return;
+
+        const link = document.createElement('a');
+        link.href = upscaleResultImage.src;
+        link.download = `upscaled_${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+}
+
