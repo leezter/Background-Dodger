@@ -98,6 +98,62 @@ const generateBtn = document.getElementById('generate-btn');
 const genStatus = document.getElementById('gen-status');
 const genStatusText = document.getElementById('gen-status-text');
 const genResult = document.getElementById('gen-result');
+const upscaleDropZone = document.getElementById('upscale-drop-zone');
+const upscaleFileInput = document.getElementById('upscale-file-input');
+const upscalePreviewContainer = document.getElementById('upscale-preview-container');
+const upscalePreview = document.getElementById('upscale-preview');
+const upscaleClear = document.getElementById('upscale-clear');
+const upscaleBtn = document.getElementById('upscale-btn');
+const upscaleStatus = document.getElementById('upscale-status');
+const upscaleStatusText = document.getElementById('upscale-status-text');
+const upscaleResult = document.getElementById('upscale-result');
+const upscaleResultImage = document.getElementById('upscale-result-image');
+const upscaleDownloadBtn = document.getElementById('upscale-download-btn');
+const upscaleFactor = document.getElementById('upscale-factor');
+const upscaleFaceEnhance = document.getElementById('upscale-face-enhance');
+
+let upscaleFile = null;
+let upscaledImageData = null;
+
+if (upscaleDropZone) {
+    upscaleDropZone.addEventListener('click', () => upscaleFileInput.click());
+
+    upscaleFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleUpscaleFile(e.target.files[0]);
+        }
+    });
+
+    upscaleDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        upscaleDropZone.classList.add('drag-over');
+    });
+
+    upscaleDropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        upscaleDropZone.classList.remove('drag-over');
+    });
+
+    upscaleDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        upscaleDropZone.classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && isValidImageType(files[0])) {
+            handleUpscaleFile(files[0]);
+        }
+    });
+}
+
+if (upscaleClear) {
+    upscaleClear.addEventListener('click', () => {
+        upscaleFile = null;
+        upscaleFileInput.value = '';
+        upscalePreviewContainer.classList.add('hidden');
+        upscaleDropZone.classList.remove('hidden');
+    });
+}
+
 const genResultGallery = document.getElementById('gen-result-gallery');
 const genDownloadAllBtn = document.getElementById('gen-download-all-btn');
 const numImagesSlider = document.getElementById('num-images-slider');
@@ -465,25 +521,20 @@ genDownloadAllBtn.addEventListener('click', () => {
 // Image Generator - Fullscreen Toggle
 // =============================================================================
 
-let fullscreenOverlay = null;
-let fullscreenImageIndex = null;
+// =============================================================================
+// Fullscreen Logic (Generic)
+// =============================================================================
 
-function toggleFullscreen(index) {
+let fullscreenOverlay = null;
+
+// Generic function to show any image in fullscreen
+function showFullscreen(imageSrc) {
     if (fullscreenOverlay) {
-        // Exit fullscreen
-        fullscreenOverlay.style.opacity = '0';
-        setTimeout(() => {
-            if (fullscreenOverlay) {
-                document.body.removeChild(fullscreenOverlay);
-                fullscreenOverlay = null;
-                fullscreenImageIndex = null;
-            }
-        }, 200);
+        closeFullscreen();
         return;
     }
 
-    if (index === undefined || !generatedImages[index]) return;
-    fullscreenImageIndex = index;
+    if (!imageSrc) return;
 
     // Create fullscreen overlay
     fullscreenOverlay = document.createElement('div');
@@ -504,7 +555,7 @@ function toggleFullscreen(index) {
     `;
 
     const img = document.createElement('img');
-    img.src = `data:image/png;base64,${generatedImages[index].image}`;
+    img.src = imageSrc;
     img.style.cssText = `
         max-width: 95vw;
         max-height: 95vh;
@@ -522,18 +573,185 @@ function toggleFullscreen(index) {
     });
 
     // Close on double-click or click
-    fullscreenOverlay.addEventListener('dblclick', () => toggleFullscreen());
-    fullscreenOverlay.addEventListener('click', () => toggleFullscreen());
+    fullscreenOverlay.addEventListener('dblclick', closeFullscreen);
+    fullscreenOverlay.addEventListener('click', closeFullscreen);
 
     // Close on Escape key
     const escHandler = (e) => {
-        if (e.key === 'Escape' && fullscreenOverlay) {
-            toggleFullscreen();
+        if (e.key === 'Escape') {
+            closeFullscreen();
             document.removeEventListener('keydown', escHandler);
         }
     };
     document.addEventListener('keydown', escHandler);
 }
+
+function closeFullscreen() {
+    if (fullscreenOverlay) {
+        fullscreenOverlay.style.opacity = '0';
+        setTimeout(() => {
+            if (fullscreenOverlay) {
+                document.body.removeChild(fullscreenOverlay);
+                fullscreenOverlay = null;
+            }
+        }, 200);
+    }
+}
+
+// =============================================================================
+// Image Source Enlarge Listeners
+// =============================================================================
+
+// Img2Img Source 1
+if (img2imgPreview) {
+    img2imgPreview.addEventListener('dblclick', () => showFullscreen(img2imgPreview.src));
+}
+// Img2Img Source 2
+if (img2imgPreview2) {
+    img2imgPreview2.addEventListener('dblclick', () => showFullscreen(img2imgPreview2.src));
+}
+// Upscaler Source
+if (upscalePreview) {
+    upscalePreview.addEventListener('dblclick', () => showFullscreen(upscalePreview.src));
+}
+// Upscaler Result
+if (upscaleResultImage) {
+    upscaleResultImage.addEventListener('dblclick', () => showFullscreen(upscaleResultImage.src));
+}
+
+
+// =============================================================================
+// Image Transfer (Slot Selection)
+// =============================================================================
+
+let slotModal = null;
+let pendingTransferData = null; // { type: 'generated'|'upscaled', index: number, imageBase64: string, seed: number }
+
+function createSlotModal() {
+    if (slotModal) return;
+
+    slotModal = document.createElement('div');
+    slotModal.id = 'slot-selection-modal';
+    slotModal.className = 'modal';
+    slotModal.innerHTML = `
+        <div class="modal-content">
+            <h3 class="modal-title">Use as Source Image</h3>
+            <p class="modal-text">Which slot would you like to transfer this image to?</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="slot-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="slot-modal-1">Slot 1</button>
+                <button class="btn btn-primary" id="slot-modal-2">Slot 2</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(slotModal);
+
+    const cancelBtn = slotModal.querySelector('#slot-modal-cancel');
+    const slot1Btn = slotModal.querySelector('#slot-modal-1');
+    const slot2Btn = slotModal.querySelector('#slot-modal-2');
+
+    cancelBtn.addEventListener('click', closeSlotModal);
+    slot1Btn.addEventListener('click', () => transferPendingImageToSlot(1));
+    slot2Btn.addEventListener('click', () => transferPendingImageToSlot(2));
+
+    slotModal.addEventListener('click', (e) => {
+        if (e.target === slotModal) closeSlotModal();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && slotModal && slotModal.classList.contains('visible')) {
+            closeSlotModal();
+        }
+    });
+}
+
+// Open modal for a generated image
+function openSlotModal(index) {
+    if (!slotModal) createSlotModal();
+    if (!generatedImages[index]) return;
+
+    pendingTransferData = {
+        type: 'generated',
+        data: generatedImages[index]
+    };
+    slotModal.classList.add('visible');
+}
+
+// Open modal for the upscaled image
+const upscaleTransferBtn = document.getElementById('upscale-transfer-btn');
+if (upscaleTransferBtn) {
+    upscaleTransferBtn.addEventListener('click', () => {
+        if (!upscaledImageData) return;
+
+        if (!slotModal) createSlotModal();
+        pendingTransferData = {
+            type: 'upscaled',
+            data: {
+                image: upscaledImageData,
+                seed: Date.now() // Mock seed for filename
+            }
+        };
+        slotModal.classList.add('visible');
+    });
+}
+
+function closeSlotModal() {
+    if (slotModal) {
+        slotModal.classList.remove('visible');
+        pendingTransferData = null;
+    }
+}
+
+function transferPendingImageToSlot(slotNumber) {
+    if (!pendingTransferData || !pendingTransferData.data) return;
+
+    const imgData = pendingTransferData.data;
+
+    // Convert base64 to File object
+    const byteCharacters = atob(imgData.image);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/png' });
+
+    const prefix = pendingTransferData.type === 'upscaled' ? 'upscaled' : 'generated';
+    const file = new File([blob], `${prefix}_${imgData.seed}.png`, { type: 'image/png' });
+
+    // Transfer to appropriate slot
+    if (slotNumber === 1) {
+        handleImg2ImgFile(file);
+    } else {
+        handleImg2ImgFile2(file);
+    }
+
+    // Switch to Img2Img mode
+    generatorMode = 'img2img';
+
+    // Update UI
+    modeButtons.forEach(btn => {
+        if (btn.dataset.mode === 'img2img') {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    img2imgUpload.classList.remove('hidden');
+
+    closeSlotModal();
+
+    // Switch to Generator panel if not already there
+    const generatorNav = document.querySelector('.nav-item[data-panel="image-gen"]');
+    if (generatorNav) generatorNav.click();
+
+    // Scroll to top of generator panel
+    document.querySelector('.generator-card-content').scrollTop = 0;
+}
+
+// Initialize modal on load
+createSlotModal();
 
 // =============================================================================
 // Video Generator - Configuration
@@ -971,172 +1189,28 @@ function showError(message) {
         }, 300);
     }, 3000);
 }
+// =============================================================================
+// Image Generator - Slot Selection Modal (Legacy - Removed)
+// =============================================================================
 
 // =============================================================================
-// Image Generator - Slot Selection Modal
+// Upscaler - Logic (Restored)
 // =============================================================================
 
-let slotModal = null;
-let selectedImageIndexForTransfer = null;
-
-function createSlotModal() {
-    if (slotModal) return;
-
-    slotModal = document.createElement('div');
-    slotModal.id = 'slot-selection-modal';
-    slotModal.className = 'modal';
-    slotModal.innerHTML = `
-        <div class="modal-content">
-            <h3 class="modal-title">Use as Source Image</h3>
-            <p class="modal-text">Which slot would you like to transfer this image to?</p>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" id="slot-modal-cancel">Cancel</button>
-                <button class="btn btn-primary" id="slot-modal-1">Slot 1</button>
-                <button class="btn btn-primary" id="slot-modal-2">Slot 2</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(slotModal);
-
-    const cancelBtn = slotModal.querySelector('#slot-modal-cancel');
-    const slot1Btn = slotModal.querySelector('#slot-modal-1');
-    const slot2Btn = slotModal.querySelector('#slot-modal-2');
-
-    cancelBtn.addEventListener('click', closeSlotModal);
-    slot1Btn.addEventListener('click', () => transferImageToSlot(1));
-    slot2Btn.addEventListener('click', () => transferImageToSlot(2));
-
-    slotModal.addEventListener('click', (e) => {
-        if (e.target === slotModal) closeSlotModal();
-    });
-
-    // Close on Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && slotModal && slotModal.classList.contains('visible')) {
-            closeSlotModal();
-        }
-    });
+if (upscaleBtn) {
+    upscaleBtn.addEventListener('click', upscaleImage);
 }
 
-function openSlotModal(index) {
-    if (!slotModal) createSlotModal();
-    selectedImageIndexForTransfer = index;
-    slotModal.classList.add('visible');
-}
+if (upscaleDownloadBtn) {
+    upscaleDownloadBtn.addEventListener('click', () => {
+        if (!upscaledImageData) return;
 
-function closeSlotModal() {
-    if (slotModal) {
-        slotModal.classList.remove('visible');
-        selectedImageIndexForTransfer = null;
-    }
-}
-
-function transferImageToSlot(slotNumber) {
-    if (selectedImageIndexForTransfer === null || !generatedImages[selectedImageIndexForTransfer]) return;
-
-    const imgData = generatedImages[selectedImageIndexForTransfer];
-
-    // Convert base64 to File object
-    const byteCharacters = atob(imgData.image);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'image/png' });
-    const file = new File([blob], `generated_${imgData.seed}.png`, { type: 'image/png' });
-
-    // Transfer to appropriate slot
-    if (slotNumber === 1) {
-        handleImg2ImgFile(file);
-    } else {
-        handleImg2ImgFile2(file);
-    }
-
-    // Switch to Img2Img mode
-    generatorMode = 'img2img';
-
-    // Update UI
-    modeButtons.forEach(btn => {
-        if (btn.dataset.mode === 'img2img') {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-
-    img2imgUpload.classList.remove('hidden');
-
-    closeSlotModal();
-
-    // Scroll to top of generator panel to see the source image
-    document.querySelector('.generator-card-content').scrollTop = 0;
-}
-
-// Initialize modal on load
-createSlotModal();
-
-// =============================================================================
-// Upscaler - DOM Elements
-// =============================================================================
-
-const upscaleDropZone = document.getElementById('upscale-drop-zone');
-const upscaleFileInput = document.getElementById('upscale-file-input');
-const upscalePreviewContainer = document.getElementById('upscale-preview-container');
-const upscalePreview = document.getElementById('upscale-preview');
-const upscaleClear = document.getElementById('upscale-clear');
-const upscaleBtn = document.getElementById('upscale-btn');
-const upscaleStatus = document.getElementById('upscale-status');
-const upscaleStatusText = document.getElementById('upscale-status-text');
-const upscaleResult = document.getElementById('upscale-result');
-const upscaleResultImage = document.getElementById('upscale-result-image');
-const upscaleDownloadBtn = document.getElementById('upscale-download-btn');
-const upscaleFactor = document.getElementById('upscale-factor');
-const upscaleFaceEnhance = document.getElementById('upscale-face-enhance');
-
-let upscaleFile = null;
-let upscaledImageData = null;
-
-// =============================================================================
-// Upscaler - Event Listeners
-// =============================================================================
-
-if (upscaleDropZone) {
-    upscaleDropZone.addEventListener('click', () => upscaleFileInput.click());
-
-    upscaleFileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            handleUpscaleFile(e.target.files[0]);
-        }
-    });
-
-    upscaleDropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        upscaleDropZone.classList.add('drag-over');
-    });
-
-    upscaleDropZone.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        upscaleDropZone.classList.remove('drag-over');
-    });
-
-    upscaleDropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        upscaleDropZone.classList.remove('drag-over');
-
-        const files = e.dataTransfer.files;
-        if (files.length > 0 && isValidImageType(files[0])) {
-            handleUpscaleFile(files[0]);
-        }
-    });
-}
-
-if (upscaleClear) {
-    upscaleClear.addEventListener('click', () => {
-        upscaleFile = null;
-        upscaleFileInput.value = '';
-        upscalePreviewContainer.classList.add('hidden');
-        upscaleDropZone.classList.remove('hidden');
+        const link = document.createElement('a');
+        link.href = upscaleResultImage.src;
+        link.download = `upscaled_${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     });
 }
 
@@ -1146,14 +1220,6 @@ function handleUpscaleFile(file) {
     upscalePreview.src = url;
     upscaleDropZone.classList.add('hidden');
     upscalePreviewContainer.classList.remove('hidden');
-}
-
-// =============================================================================
-// Upscaler - Logic
-// =============================================================================
-
-if (upscaleBtn) {
-    upscaleBtn.addEventListener('click', upscaleImage);
 }
 
 async function upscaleImage() {
@@ -1211,85 +1277,8 @@ async function upscaleImage() {
     }
 }
 
-if (upscaleDownloadBtn) {
-    upscaleDownloadBtn.addEventListener('click', () => {
-        if (!upscaledImageData) return;
 
-        const link = document.createElement('a');
-        link.href = upscaleResultImage.src;
-        link.download = `upscaled_${Date.now()}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    });
-}
 
-if (upscaleResultImage) {
-    upscaleResultImage.addEventListener('dblclick', toggleUpscaleFullscreen);
-}
 
-function toggleUpscaleFullscreen() {
-    if (fullscreenOverlay) {
-        // Exit fullscreen (reuse existing logic)
-        fullscreenOverlay.style.opacity = '0';
-        setTimeout(() => {
-            if (fullscreenOverlay) {
-                document.body.removeChild(fullscreenOverlay);
-                fullscreenOverlay = null;
-            }
-        }, 200);
-        return;
-    }
 
-    if (!upscaledImageData) return;
-
-    // Create fullscreen overlay
-    fullscreenOverlay = document.createElement('div');
-    fullscreenOverlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background: rgba(0, 0, 0, 0.95);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 9999;
-        cursor: zoom-out;
-        opacity: 0;
-        transition: opacity 0.2s ease;
-    `;
-
-    const img = document.createElement('img');
-    img.src = `data:image/png;base64,${upscaledImageData}`;
-    img.style.cssText = `
-        max-width: 95vw;
-        max-height: 95vh;
-        object-fit: contain;
-        border-radius: 8px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    `;
-
-    fullscreenOverlay.appendChild(img);
-    document.body.appendChild(fullscreenOverlay);
-
-    // Fade in
-    requestAnimationFrame(() => {
-        fullscreenOverlay.style.opacity = '1';
-    });
-
-    // Close on double-click or click
-    fullscreenOverlay.addEventListener('dblclick', () => toggleUpscaleFullscreen());
-    fullscreenOverlay.addEventListener('click', () => toggleUpscaleFullscreen());
-
-    // Close on Escape key
-    const escHandler = (e) => {
-        if (e.key === 'Escape' && fullscreenOverlay) {
-            toggleUpscaleFullscreen();
-            document.removeEventListener('keydown', escHandler);
-        }
-    };
-    document.addEventListener('keydown', escHandler);
-}
 
