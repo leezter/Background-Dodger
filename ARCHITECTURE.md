@@ -94,6 +94,10 @@ flowchart LR
   - `POST /api/load-model`: Switch between models
 - **Model Loading**: Auto-selects model based on available VRAM
 - **Pipeline**: Uses `Flux2KleinPipeline` from diffusers (git main branch)
+- **Dual-Image Handling**:
+  - `stitch_images(img1, img2)` helper function resizing both to same height
+  - Concatenates images horizontally before passing to model
+  - Allows single-image prompts to influence style/structure from two sources
 
 #### `server/requirements.txt`
 Python dependencies:

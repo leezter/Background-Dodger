@@ -49,6 +49,7 @@ Then open [http://localhost:8080](http://localhost:8080) and click the 🎬 icon
 - **Local GPU**: Runs entirely on your NVIDIA GPU (RTX 3090/4070+)
 - **Text-to-Image**: Generate images from text prompts
 - **Image-to-Image**: Edit existing images with prompts
+- **Dual-Image Support**: Combine two source images for image-to-image generation
 - **Sub-Second**: ~0.5s generation time on modern GPUs
 - **Apache 2.0**: Klein 4B model is commercially usable
 
