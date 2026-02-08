@@ -474,7 +474,7 @@ function displayGallery(images) {
 
         // Add click handler for fullscreen view
         const img = item.querySelector('.gallery-item-image');
-        img.addEventListener('dblclick', () => toggleFullscreen(index));
+        img.addEventListener('dblclick', () => showFullscreen(`data:image/png;base64,${imgData.image}`));
 
         // Add download handler
         const downloadBtn = item.querySelector('.gallery-item-download');
