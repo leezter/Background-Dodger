@@ -1011,6 +1011,133 @@ body {
     background: rgba(239, 68, 68, 0.8);
 }
 
+/* Slider Labels */
+.slider-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
+
+/* ============================================
+   Image Gallery Grid
+   ============================================ */
+.gen-result-gallery {
+    flex: 1;
+    padding: var(--spacing-md);
+    display: grid;
+    gap: var(--spacing-md);
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* Single image - centered large display */
+.gen-result-gallery.single-image {
+    grid-template-columns: 1fr;
+    align-items: center;
+    justify-items: center;
+}
+
+/* 2 images - two columns */
+.gen-result-gallery.two-images {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+/* 3-4 images - two columns  */
+.gen-result-gallery.multi-images {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+/* 5-6 images - three columns */
+.gen-result-gallery.many-images {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+/* Individual gallery item */
+.gallery-item {
+    position: relative;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    transition: all var(--transition-base);
+}
+
+.gallery-item:hover {
+    border-color: var(--color-accent-primary);
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+    transform: translateY(-2px);
+}
+
+.gallery-item-image-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-sm);
+    background-image:
+        linear-gradient(45deg, #1a1a2e 25%, transparent 25%),
+        linear-gradient(-45deg, #1a1a2e 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1a1a2e 75%),
+        linear-gradient(-45deg, transparent 75%, #1a1a2e 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color: #12121a;
+}
+
+.gallery-item-image {
+    max-width: 100%;
+    max-height: 350px;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    cursor: zoom-in;
+}
+
+/* Single image should be larger */
+.single-image .gallery-item-image {
+    max-height: 500px;
+}
+
+/* Gallery item footer with seed and download */
+.gallery-item-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--color-bg-card);
+    border-top: 1px solid var(--color-border);
+}
+
+.gallery-item-seed {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    font-family: monospace;
+}
+
+.gallery-item-download {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    background: var(--color-accent-gradient);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.gallery-item-download:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 10px rgba(139, 92, 246, 0.4);
+}
+
+.gallery-item-download svg {
+    width: 12px;
+    height: 12px;
+}
+
 /* ============================================
    Video Generator Panel
    ============================================ */

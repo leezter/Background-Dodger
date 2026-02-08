@@ -238,6 +238,18 @@
                                         placeholder="Describe the image you want to generate..."></textarea>
                                 </div>
 
+                                <!-- Number of Images Slider -->
+                                <div class="form-group">
+                                    <label class="form-label">Images to Generate: <span
+                                            id="num-images-value">1</span></label>
+                                    <input type="range" id="num-images-slider" class="form-range" min="1" max="6"
+                                        step="1" value="1">
+                                    <div class="slider-labels">
+                                        <span>1</span>
+                                        <span>6</span>
+                                    </div>
+                                </div>
+
                                 <!-- Advanced Settings (collapsible) -->
                                 <details class="advanced-settings">
                                     <summary class="advanced-summary">Advanced Settings</summary>
@@ -317,9 +329,9 @@
                             <!-- Result Display (always visible, shows placeholder when empty) -->
                             <div id="gen-result" class="gen-result hidden">
                                 <div class="gen-result-header">
-                                    <h3 class="gen-result-title">Generated Image</h3>
+                                    <h3 class="gen-result-title">Generated Images</h3>
                                     <div class="gen-result-actions">
-                                        <button id="gen-download-btn" class="btn btn-primary btn-small">
+                                        <button id="gen-download-all-btn" class="btn btn-secondary btn-small hidden">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                                 stroke-linecap="round" stroke-linejoin="round">
@@ -327,13 +339,12 @@
                                                 <polyline points="7 10 12 15 17 10" />
                                                 <line x1="12" y1="15" x2="12" y2="3" />
                                             </svg>
-                                            Download
+                                            Download All
                                         </button>
-                                        <span id="gen-seed-display" class="gen-seed">Seed: —</span>
                                     </div>
                                 </div>
-                                <div class="gen-result-image-wrapper checkered-bg">
-                                    <img id="gen-result-image" class="gen-result-image" alt="Generated image">
+                                <div id="gen-result-gallery" class="gen-result-gallery">
+                                    <!-- Images will be dynamically inserted here -->
                                 </div>
                             </div>
 

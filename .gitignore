@@ -1,0 +1,67 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+.env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Virtual Environments (Standard names)
+.venv
+venv
+env
+ENV
+
+# Large Model Files (Prevent accidental commits of heavy AI models)
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.bin
+*.gguf
+*.onnx
+
+# OS Specific
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node.js (Just in case you add npm later)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Potentially temporary / generated files
+*.log
+tmp/
+temp/

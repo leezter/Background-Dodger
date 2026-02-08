@@ -92,15 +92,15 @@ const generateBtn = document.getElementById('generate-btn');
 const genStatus = document.getElementById('gen-status');
 const genStatusText = document.getElementById('gen-status-text');
 const genResult = document.getElementById('gen-result');
-const genResultImage = document.getElementById('gen-result-image');
-const genDownloadBtn = document.getElementById('gen-download-btn');
-const genSeedDisplay = document.getElementById('gen-seed-display');
+const genResultGallery = document.getElementById('gen-result-gallery');
+const genDownloadAllBtn = document.getElementById('gen-download-all-btn');
+const numImagesSlider = document.getElementById('num-images-slider');
+const numImagesValue = document.getElementById('num-images-value');
 
 // Image Generator State
 let generatorMode = 'text2img'; // 'text2img' or 'img2img'
 let img2imgFile = null;
-let generatedImageData = null;
-let lastGeneratedSeed = null;
+let generatedImages = []; // Array of {image: base64, seed: number}
 
 // =============================================================================
 // Image Generator - Mode Toggle
@@ -180,6 +180,10 @@ guidanceSlider.addEventListener('input', () => {
     guidanceValue.textContent = guidanceSlider.value;
 });
 
+numImagesSlider.addEventListener('input', () => {
+    numImagesValue.textContent = numImagesSlider.value;
+});
+
 // =============================================================================
 // Image Generator - Generate Image
 // =============================================================================
@@ -188,6 +192,7 @@ generateBtn.addEventListener('click', generateImage);
 
 async function generateImage() {
     const prompt = promptInput.value.trim();
+    const numImages = parseInt(numImagesSlider.value);
 
     if (!prompt) {
         showError('Please enter a prompt');
@@ -212,7 +217,8 @@ async function generateImage() {
             throw new Error('Cannot connect to FLUX server. Make sure the Python backend is running on port 8000.');
         }
 
-        genStatusText.textContent = 'Generating image...';
+        const imageText = numImages === 1 ? 'image' : `${numImages} images`;
+        genStatusText.textContent = `Generating ${imageText}...`;
 
         let response;
 
@@ -223,6 +229,7 @@ async function generateImage() {
                 width: parseInt(widthSelect.value),
                 height: parseInt(heightSelect.value),
                 guidance_scale: parseFloat(guidanceSlider.value),
+                num_images: numImages,
             };
 
             if (stepsInput.value) {
@@ -247,6 +254,7 @@ async function generateImage() {
             formData.append('prompt', prompt);
             formData.append('strength', strengthSlider.value);
             formData.append('guidance_scale', guidanceSlider.value);
+            formData.append('num_images', numImages);
 
             if (stepsInput.value) {
                 formData.append('num_inference_steps', stepsInput.value);
@@ -268,17 +276,28 @@ async function generateImage() {
             throw new Error(result.error || 'Generation failed');
         }
 
-        // Display result
-        generatedImageData = result.image;
-        lastGeneratedSeed = result.seed;
+        // Handle both single image and multiple images response
+        if (result.images && Array.isArray(result.images)) {
+            generatedImages = result.images;
+        } else if (result.image) {
+            // Backward compatibility: single image response
+            generatedImages = [{ image: result.image, seed: result.seed }];
+        }
 
-        genResultImage.src = `data:image/png;base64,${result.image}`;
-        genSeedDisplay.textContent = `Seed: ${result.seed}`;
+        // Display results in gallery
+        displayGallery(generatedImages);
 
         // Show result, hide placeholder
         const placeholder = document.getElementById('gen-result-placeholder');
         if (placeholder) placeholder.classList.add('hidden');
         genResult.classList.remove('hidden');
+
+        // Show/hide download all button based on number of images
+        if (generatedImages.length > 1) {
+            genDownloadAllBtn.classList.remove('hidden');
+        } else {
+            genDownloadAllBtn.classList.add('hidden');
+        }
 
     } catch (error) {
         console.error('Generation failed:', error);
@@ -289,15 +308,62 @@ async function generateImage() {
     }
 }
 
-// =============================================================================
-// Image Generator - Download
-// =============================================================================
+// Display images in gallery grid
+function displayGallery(images) {
+    genResultGallery.innerHTML = '';
 
-genDownloadBtn.addEventListener('click', () => {
-    if (!generatedImageData) return;
+    // Set grid class based on number of images
+    genResultGallery.className = 'gen-result-gallery';
+    if (images.length === 1) {
+        genResultGallery.classList.add('single-image');
+    } else if (images.length === 2) {
+        genResultGallery.classList.add('two-images');
+    } else if (images.length <= 4) {
+        genResultGallery.classList.add('multi-images');
+    } else {
+        genResultGallery.classList.add('many-images');
+    }
 
-    // Convert base64 to blob
-    const byteCharacters = atob(generatedImageData);
+    images.forEach((imgData, index) => {
+        const item = document.createElement('div');
+        item.className = 'gallery-item';
+        item.innerHTML = `
+            <div class="gallery-item-image-wrapper">
+                <img src="data:image/png;base64,${imgData.image}" 
+                     class="gallery-item-image" 
+                     alt="Generated image ${index + 1}"
+                     data-index="${index}">
+            </div>
+            <div class="gallery-item-footer">
+                <span class="gallery-item-seed">Seed: ${imgData.seed}</span>
+                <button class="gallery-item-download" data-index="${index}" title="Download this image">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Save
+                </button>
+            </div>
+        `;
+        genResultGallery.appendChild(item);
+
+        // Add click handler for fullscreen view
+        const img = item.querySelector('.gallery-item-image');
+        img.addEventListener('dblclick', () => toggleFullscreen(index));
+
+        // Add download handler
+        const downloadBtn = item.querySelector('.gallery-item-download');
+        downloadBtn.addEventListener('click', () => downloadImage(index));
+    });
+}
+
+// Download a single image by index
+function downloadImage(index) {
+    if (!generatedImages[index]) return;
+
+    const imgData = generatedImages[index];
+    const byteCharacters = atob(imgData.image);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -305,13 +371,22 @@ genDownloadBtn.addEventListener('click', () => {
     const byteArray = new Uint8Array(byteNumbers);
     const blob = new Blob([byteArray], { type: 'image/png' });
 
-    // Download
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `flux_generation_${lastGeneratedSeed || Date.now()}.png`;
+    link.download = `flux_generation_${imgData.seed}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+}
+
+// Download all images
+genDownloadAllBtn.addEventListener('click', () => {
+    if (generatedImages.length === 0) return;
+
+    generatedImages.forEach((_, index) => {
+        setTimeout(() => downloadImage(index), index * 200); // Stagger downloads
+    });
 });
 
 // =============================================================================
@@ -319,13 +394,9 @@ genDownloadBtn.addEventListener('click', () => {
 // =============================================================================
 
 let fullscreenOverlay = null;
+let fullscreenImageIndex = null;
 
-genResultImage.addEventListener('dblclick', () => {
-    if (!generatedImageData) return;
-    toggleFullscreen();
-});
-
-function toggleFullscreen() {
+function toggleFullscreen(index) {
     if (fullscreenOverlay) {
         // Exit fullscreen
         fullscreenOverlay.style.opacity = '0';
@@ -333,10 +404,14 @@ function toggleFullscreen() {
             if (fullscreenOverlay) {
                 document.body.removeChild(fullscreenOverlay);
                 fullscreenOverlay = null;
+                fullscreenImageIndex = null;
             }
         }, 200);
         return;
     }
+
+    if (index === undefined || !generatedImages[index]) return;
+    fullscreenImageIndex = index;
 
     // Create fullscreen overlay
     fullscreenOverlay = document.createElement('div');
@@ -357,7 +432,7 @@ function toggleFullscreen() {
     `;
 
     const img = document.createElement('img');
-    img.src = `data:image/png;base64,${generatedImageData}`;
+    img.src = `data:image/png;base64,${generatedImages[index].image}`;
     img.style.cssText = `
         max-width: 95vw;
         max-height: 95vh;
@@ -375,8 +450,8 @@ function toggleFullscreen() {
     });
 
     // Close on double-click or click
-    fullscreenOverlay.addEventListener('dblclick', toggleFullscreen);
-    fullscreenOverlay.addEventListener('click', toggleFullscreen);
+    fullscreenOverlay.addEventListener('dblclick', () => toggleFullscreen());
+    fullscreenOverlay.addEventListener('click', () => toggleFullscreen());
 
     // Close on Escape key
     const escHandler = (e) => {
@@ -638,7 +713,7 @@ dropZone.addEventListener('drop', (e) => {
 });
 
 // Download button
-downloadBtn.addEventListener('click', downloadImage);
+downloadBtn.addEventListener('click', downloadBgRemovedImage);
 
 // New image button
 newImageBtn.addEventListener('click', resetToUpload);
@@ -736,7 +811,7 @@ function updateProgress(percent, text) {
     progressText.textContent = text;
 }
 
-function downloadImage() {
+function downloadBgRemovedImage() {
     if (!processedBlob) return;
 
     const link = document.createElement('a');

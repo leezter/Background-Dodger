@@ -152,6 +152,7 @@ class GenerateRequest(BaseModel):
     num_inference_steps: Optional[int] = None
     guidance_scale: Optional[float] = None  # None = use model default (1.0 for distilled, 3.5 for dev)
     seed: Optional[int] = None
+    num_images: Optional[int] = 1  # Number of images to generate (1-6)
 
 class Img2ImgRequest(BaseModel):
     prompt: str
@@ -165,7 +166,8 @@ class ModelSwitchRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     success: bool
-    image: Optional[str] = None  # Base64 encoded image
+    image: Optional[str] = None  # Base64 encoded image (single image, backward compatible)
+    images: Optional[list] = None  # List of {image: base64, seed: int} for multiple images
     error: Optional[str] = None
     seed: Optional[int] = None
 
@@ -262,7 +264,7 @@ async def switch_model(request: ModelSwitchRequest):
 
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate_image(request: GenerateRequest):
-    """Generate an image from a text prompt using FLUX.2."""
+    """Generate one or more images from a text prompt using FLUX.2."""
     if model_state.pipeline is None:
         raise HTTPException(status_code=503, detail="No model loaded")
     
@@ -273,38 +275,55 @@ async def generate_image(request: GenerateRequest):
         num_steps = min(num_steps, model_info["max_steps"])
         guidance = request.guidance_scale if request.guidance_scale is not None else model_info["default_guidance"]
         
-        # Set seed for reproducibility
-        generator = None
-        seed = request.seed
-        if seed is None:
-            seed = torch.randint(0, 2**32, (1,)).item()
-        generator = torch.Generator(device="cpu").manual_seed(seed)
+        # Clamp num_images to 1-6
+        num_images = max(1, min(6, request.num_images or 1))
         
-        logger.info(f"Generating image: prompt='{request.prompt[:50]}...', steps={num_steps}, guidance={guidance}, seed={seed}")
+        # Set base seed for reproducibility
+        base_seed = request.seed
+        if base_seed is None:
+            base_seed = torch.randint(0, 2**32, (1,)).item()
         
-        # Generate image
-        result = model_state.pipeline(
-            prompt=request.prompt,
-            width=request.width,
-            height=request.height,
-            num_inference_steps=num_steps,
-            guidance_scale=guidance,
-            generator=generator,
-        )
+        logger.info(f"Generating {num_images} image(s): prompt='{request.prompt[:50]}...', steps={num_steps}, guidance={guidance}, base_seed={base_seed}")
         
-        image = result.images[0]
+        generated_images = []
         
-        # Convert to base64
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        for i in range(num_images):
+            # Each image gets a unique seed (base_seed + i)
+            current_seed = base_seed + i
+            generator = torch.Generator(device="cpu").manual_seed(current_seed)
+            
+            # Generate image
+            result = model_state.pipeline(
+                prompt=request.prompt,
+                width=request.width,
+                height=request.height,
+                num_inference_steps=num_steps,
+                guidance_scale=guidance,
+                generator=generator,
+            )
+            
+            image = result.images[0]
+            
+            # Convert to base64
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG")
+            image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            
+            generated_images.append({
+                "image": image_base64,
+                "seed": current_seed
+            })
+            
+            logger.info(f"Image {i+1}/{num_images} generated with seed {current_seed}")
         
-        logger.info("Image generated successfully")
+        logger.info(f"All {num_images} image(s) generated successfully")
         
+        # Return response - include both single image (backward compatible) and images array
         return GenerateResponse(
             success=True,
-            image=image_base64,
-            seed=seed
+            image=generated_images[0]["image"] if generated_images else None,
+            images=generated_images,
+            seed=generated_images[0]["seed"] if generated_images else None
         )
         
     except Exception as e:
@@ -322,9 +341,10 @@ async def image_to_image(
     strength: float = Form(0.75),
     num_inference_steps: Optional[int] = Form(None),
     guidance_scale: float = Form(4.0),
-    seed: Optional[int] = Form(None)
+    seed: Optional[int] = Form(None),
+    num_images: int = Form(1)
 ):
-    """Edit an image using FLUX.2 with a text prompt."""
+    """Edit an image using FLUX.2 with a text prompt. Supports multiple outputs."""
     if model_state.pipeline is None:
         raise HTTPException(status_code=503, detail="No model loaded")
     
@@ -349,35 +369,53 @@ async def image_to_image(
         num_steps = min(num_steps, model_info["max_steps"])
         guidance = guidance_scale if guidance_scale is not None else model_info["default_guidance"]
         
-        # Set seed
-        if seed is None:
-            seed = torch.randint(0, 2**32, (1,)).item()
-        generator = torch.Generator(device="cpu").manual_seed(seed)
+        # Clamp num_images to 1-6
+        num_images = max(1, min(6, num_images))
         
-        logger.info(f"Img2Img: prompt='{prompt[:50]}...', steps={num_steps}, guidance={guidance}")
+        # Set base seed
+        base_seed = seed
+        if base_seed is None:
+            base_seed = torch.randint(0, 2**32, (1,)).item()
         
-        # Generate image (FLUX.2 Klein uses image as reference, doesn't use strength)
-        result = model_state.pipeline(
-            prompt=prompt,
-            image=init_image,
-            num_inference_steps=num_steps,
-            guidance_scale=guidance,
-            generator=generator,
-        )
+        logger.info(f"Img2Img: {num_images} image(s), prompt='{prompt[:50]}...', steps={num_steps}, guidance={guidance}")
         
-        output_image = result.images[0]
+        generated_images = []
         
-        # Convert to base64
-        buffer = io.BytesIO()
-        output_image.save(buffer, format="PNG")
-        image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        for i in range(num_images):
+            # Each image gets a unique seed
+            current_seed = base_seed + i
+            generator = torch.Generator(device="cpu").manual_seed(current_seed)
+            
+            # Generate image (FLUX.2 Klein uses image as reference, doesn't use strength)
+            result = model_state.pipeline(
+                prompt=prompt,
+                image=init_image,
+                num_inference_steps=num_steps,
+                guidance_scale=guidance,
+                generator=generator,
+            )
+            
+            output_image = result.images[0]
+            
+            # Convert to base64
+            buffer = io.BytesIO()
+            output_image.save(buffer, format="PNG")
+            image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+            
+            generated_images.append({
+                "image": image_base64,
+                "seed": current_seed
+            })
+            
+            logger.info(f"Img2Img {i+1}/{num_images} completed with seed {current_seed}")
         
-        logger.info("Img2Img completed successfully")
+        logger.info(f"All {num_images} Img2Img image(s) completed successfully")
         
         return GenerateResponse(
             success=True,
-            image=image_base64,
-            seed=seed
+            image=generated_images[0]["image"] if generated_images else None,
+            images=generated_images,
+            seed=generated_images[0]["seed"] if generated_images else None
         )
         
     except Exception as e:
