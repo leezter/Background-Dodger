@@ -78,6 +78,12 @@ const img2imgFileInput = document.getElementById('img2img-file-input');
 const img2imgPreviewContainer = document.getElementById('img2img-preview-container');
 const img2imgPreview = document.getElementById('img2img-preview');
 const img2imgClear = document.getElementById('img2img-clear');
+
+const img2imgDropZone2 = document.getElementById('img2img-drop-zone-2');
+const img2imgFileInput2 = document.getElementById('img2img-file-input-2');
+const img2imgPreviewContainer2 = document.getElementById('img2img-preview-container-2');
+const img2imgPreview2 = document.getElementById('img2img-preview-2');
+const img2imgClear2 = document.getElementById('img2img-clear-2');
 const strengthSlider = document.getElementById('strength-slider');
 const strengthValue = document.getElementById('strength-value');
 const modelSelect = document.getElementById('model-select');
@@ -100,6 +106,7 @@ const numImagesValue = document.getElementById('num-images-value');
 // Image Generator State
 let generatorMode = 'text2img'; // 'text2img' or 'img2img'
 let img2imgFile = null;
+let img2imgFile2 = null;
 let generatedImages = []; // Array of {image: base64, seed: number}
 
 // =============================================================================
@@ -166,6 +173,53 @@ function handleImg2ImgFile(file) {
     img2imgPreview.src = url;
     img2imgDropZone.classList.add('hidden');
     img2imgPreviewContainer.classList.remove('hidden');
+}
+
+// =============================================================================
+// Image Generator - Img2Img Upload (Image 2)
+// =============================================================================
+
+img2imgDropZone2.addEventListener('click', () => img2imgFileInput2.click());
+
+img2imgFileInput2.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+        handleImg2ImgFile2(e.target.files[0]);
+    }
+});
+
+img2imgDropZone2.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    img2imgDropZone2.classList.add('drag-over');
+});
+
+img2imgDropZone2.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    img2imgDropZone2.classList.remove('drag-over');
+});
+
+img2imgDropZone2.addEventListener('drop', (e) => {
+    e.preventDefault();
+    img2imgDropZone2.classList.remove('drag-over');
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && isValidImageType(files[0])) {
+        handleImg2ImgFile2(files[0]);
+    }
+});
+
+img2imgClear2.addEventListener('click', () => {
+    img2imgFile2 = null;
+    img2imgFileInput2.value = '';
+    img2imgPreviewContainer2.classList.add('hidden');
+    img2imgDropZone2.classList.remove('hidden');
+});
+
+function handleImg2ImgFile2(file) {
+    img2imgFile2 = file;
+    const url = URL.createObjectURL(file);
+    img2imgPreview2.src = url;
+    img2imgDropZone2.classList.add('hidden');
+    img2imgPreviewContainer2.classList.remove('hidden');
 }
 
 // =============================================================================
@@ -251,6 +305,9 @@ async function generateImage() {
             // Image to Image
             const formData = new FormData();
             formData.append('image', img2imgFile);
+            if (img2imgFile2) {
+                formData.append('image2', img2imgFile2);
+            }
             formData.append('prompt', prompt);
             formData.append('strength', strengthSlider.value);
             formData.append('guidance_scale', guidanceSlider.value);

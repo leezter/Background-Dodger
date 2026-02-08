@@ -160,6 +160,7 @@ class Img2ImgRequest(BaseModel):
     num_inference_steps: Optional[int] = None
     guidance_scale: Optional[float] = None  # None = use model default (1.0 for distilled, 3.5 for dev)
     seed: Optional[int] = None
+    image2: Optional[str] = None # Optional second image for stitching
 
 class ModelSwitchRequest(BaseModel):
     model: str
@@ -170,6 +171,39 @@ class GenerateResponse(BaseModel):
     images: Optional[list] = None  # List of {image: base64, seed: int} for multiple images
     error: Optional[str] = None
     seed: Optional[int] = None
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def stitch_images(image1: Image.Image, image2: Image.Image) -> Image.Image:
+    """
+    Stitch two images side-by-side (horizontally).
+    Resizes both images to match the height of the taller image while maintaining aspect ratio.
+    """
+    w1, h1 = image1.size
+    w2, h2 = image2.size
+    
+    # Determine target height (max of the two)
+    target_height = max(h1, h2)
+    
+    # Calculate new widths to maintain aspect ratio
+    new_w1 = int(w1 * (target_height / h1))
+    new_w2 = int(w2 * (target_height / h2))
+    
+    # Resize images
+    img1_resized = image1.resize((new_w1, target_height), Image.LANCZOS)
+    img2_resized = image2.resize((new_w2, target_height), Image.LANCZOS)
+    
+    # Create new blank image
+    total_width = new_w1 + new_w2
+    new_image = Image.new("RGB", (total_width, target_height))
+    
+    # Paste images
+    new_image.paste(img1_resized, (0, 0))
+    new_image.paste(img2_resized, (new_w1, 0))
+    
+    return new_image
 
 # =============================================================================
 # FastAPI App
@@ -336,6 +370,7 @@ async def generate_image(request: GenerateRequest):
 @app.post("/api/img2img", response_model=GenerateResponse)
 async def image_to_image(
     image: UploadFile = File(...),
+    image2: Optional[UploadFile] = File(None), # Second optional image
     prompt: str = Form(...),
     negative_prompt: str = Form(""),
     strength: float = Form(0.75),
@@ -344,14 +379,21 @@ async def image_to_image(
     seed: Optional[int] = Form(None),
     num_images: int = Form(1)
 ):
-    """Edit an image using FLUX.2 with a text prompt. Supports multiple outputs."""
+    """Edit an image using FLUX.2 with a text prompt. Supports multiple inputs via stitching."""
     if model_state.pipeline is None:
         raise HTTPException(status_code=503, detail="No model loaded")
     
     try:
-        # Load the input image
+        # Load the first image
         image_data = await image.read()
         init_image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        
+        # Load second image if present
+        if image2:
+            image2_data = await image2.read()
+            img2 = Image.open(io.BytesIO(image2_data)).convert("RGB")
+            logger.info("Second image received. Stitching images...")
+            init_image = stitch_images(init_image, img2)
         
         # Resize to supported dimensions if needed
         width, height = init_image.size
