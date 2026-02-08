@@ -393,14 +393,25 @@ function displayGallery(images) {
             </div>
             <div class="gallery-item-footer">
                 <span class="gallery-item-seed">Seed: ${imgData.seed}</span>
-                <button class="gallery-item-download" data-index="${index}" title="Download this image">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    Save
-                </button>
+                <div class="gallery-item-actions">
+                    <button class="gallery-item-btn gallery-item-transfer" data-index="${index}" title="Use this image as a source for Image-to-Image generation">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="17 1 21 5 17 9"></polyline>
+                            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                            <polyline points="7 23 3 19 7 15"></polyline>
+                            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                        </svg>
+                        Use as Source
+                    </button>
+                    <button class="gallery-item-btn gallery-item-download" data-index="${index}" title="Download this image">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        Save
+                    </button>
+                </div>
             </div>
         `;
         genResultGallery.appendChild(item);
@@ -412,6 +423,10 @@ function displayGallery(images) {
         // Add download handler
         const downloadBtn = item.querySelector('.gallery-item-download');
         downloadBtn.addEventListener('click', () => downloadImage(index));
+
+        // Add transfer handler
+        const transferBtn = item.querySelector('.gallery-item-transfer');
+        transferBtn.addEventListener('click', () => openSlotModal(index));
     });
 }
 
@@ -956,3 +971,107 @@ function showError(message) {
         }, 300);
     }, 3000);
 }
+
+// =============================================================================
+// Image Generator - Slot Selection Modal
+// =============================================================================
+
+let slotModal = null;
+let selectedImageIndexForTransfer = null;
+
+function createSlotModal() {
+    if (slotModal) return;
+
+    slotModal = document.createElement('div');
+    slotModal.id = 'slot-selection-modal';
+    slotModal.className = 'modal';
+    slotModal.innerHTML = `
+        <div class="modal-content">
+            <h3 class="modal-title">Use as Source Image</h3>
+            <p class="modal-text">Which slot would you like to transfer this image to?</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="slot-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="slot-modal-1">Slot 1</button>
+                <button class="btn btn-primary" id="slot-modal-2">Slot 2</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(slotModal);
+
+    const cancelBtn = slotModal.querySelector('#slot-modal-cancel');
+    const slot1Btn = slotModal.querySelector('#slot-modal-1');
+    const slot2Btn = slotModal.querySelector('#slot-modal-2');
+
+    cancelBtn.addEventListener('click', closeSlotModal);
+    slot1Btn.addEventListener('click', () => transferImageToSlot(1));
+    slot2Btn.addEventListener('click', () => transferImageToSlot(2));
+
+    slotModal.addEventListener('click', (e) => {
+        if (e.target === slotModal) closeSlotModal();
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && slotModal && slotModal.classList.contains('visible')) {
+            closeSlotModal();
+        }
+    });
+}
+
+function openSlotModal(index) {
+    if (!slotModal) createSlotModal();
+    selectedImageIndexForTransfer = index;
+    slotModal.classList.add('visible');
+}
+
+function closeSlotModal() {
+    if (slotModal) {
+        slotModal.classList.remove('visible');
+        selectedImageIndexForTransfer = null;
+    }
+}
+
+function transferImageToSlot(slotNumber) {
+    if (selectedImageIndexForTransfer === null || !generatedImages[selectedImageIndexForTransfer]) return;
+
+    const imgData = generatedImages[selectedImageIndexForTransfer];
+
+    // Convert base64 to File object
+    const byteCharacters = atob(imgData.image);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/png' });
+    const file = new File([blob], `generated_${imgData.seed}.png`, { type: 'image/png' });
+
+    // Transfer to appropriate slot
+    if (slotNumber === 1) {
+        handleImg2ImgFile(file);
+    } else {
+        handleImg2ImgFile2(file);
+    }
+
+    // Switch to Img2Img mode
+    generatorMode = 'img2img';
+
+    // Update UI
+    modeButtons.forEach(btn => {
+        if (btn.dataset.mode === 'img2img') {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    img2imgUpload.classList.remove('hidden');
+
+    closeSlotModal();
+
+    // Scroll to top of generator panel to see the source image
+    document.querySelector('.generator-card-content').scrollTop = 0;
+}
+
+// Initialize modal on load
+createSlotModal();
