@@ -78,12 +78,14 @@ const img2imgFileInput = document.getElementById('img2img-file-input');
 const img2imgPreviewContainer = document.getElementById('img2img-preview-container');
 const img2imgPreview = document.getElementById('img2img-preview');
 const img2imgClear = document.getElementById('img2img-clear');
+const img2imgDownload = document.getElementById('img2img-download');
 
 const img2imgDropZone2 = document.getElementById('img2img-drop-zone-2');
 const img2imgFileInput2 = document.getElementById('img2img-file-input-2');
 const img2imgPreviewContainer2 = document.getElementById('img2img-preview-container-2');
 const img2imgPreview2 = document.getElementById('img2img-preview-2');
 const img2imgClear2 = document.getElementById('img2img-clear-2');
+const img2imgDownload2 = document.getElementById('img2img-download-2');
 const strengthSlider = document.getElementById('strength-slider');
 const strengthValue = document.getElementById('strength-value');
 const modelSelect = document.getElementById('model-select');
@@ -103,6 +105,7 @@ const upscaleFileInput = document.getElementById('upscale-file-input');
 const upscalePreviewContainer = document.getElementById('upscale-preview-container');
 const upscalePreview = document.getElementById('upscale-preview');
 const upscaleClear = document.getElementById('upscale-clear');
+const upscaleDownload = document.getElementById('upscale-download');
 const upscaleBtn = document.getElementById('upscale-btn');
 const upscaleStatus = document.getElementById('upscale-status');
 const upscaleStatusText = document.getElementById('upscale-status-text');
@@ -151,6 +154,13 @@ if (upscaleClear) {
         upscaleFileInput.value = '';
         upscalePreviewContainer.classList.add('hidden');
         upscaleDropZone.classList.remove('hidden');
+    });
+}
+
+if (upscaleDownload) {
+    upscaleDownload.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (upscalePreview.src) downloadSourceImage(upscalePreview.src, 'upscale_source.png');
     });
 }
 
@@ -223,6 +233,13 @@ img2imgClear.addEventListener('click', () => {
     img2imgDropZone.classList.remove('hidden');
 });
 
+if (img2imgDownload) {
+    img2imgDownload.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (img2imgPreview.src) downloadSourceImage(img2imgPreview.src, 'img2img_source_1.png');
+    });
+}
+
 function handleImg2ImgFile(file) {
     img2imgFile = file;
     const url = URL.createObjectURL(file);
@@ -270,6 +287,13 @@ img2imgClear2.addEventListener('click', () => {
     img2imgDropZone2.classList.remove('hidden');
 });
 
+if (img2imgDownload2) {
+    img2imgDownload2.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (img2imgPreview2.src) downloadSourceImage(img2imgPreview2.src, 'img2img_source_2.png');
+    });
+}
+
 function handleImg2ImgFile2(file) {
     img2imgFile2 = file;
     const url = URL.createObjectURL(file);
@@ -299,6 +323,13 @@ numImagesSlider.addEventListener('input', () => {
 // =============================================================================
 
 generateBtn.addEventListener('click', generateImage);
+
+promptInput.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        generateImage();
+    }
+});
 
 async function generateImage() {
     const prompt = promptInput.value.trim();
@@ -506,6 +537,16 @@ function downloadImage(index) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
+}
+
+// Download source image from src URL (blob or data URL)
+function downloadSourceImage(src, filename) {
+    const link = document.createElement('a');
+    link.href = src;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 // Download all images

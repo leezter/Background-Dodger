@@ -1011,6 +1011,29 @@ body {
     background: rgba(239, 68, 68, 0.8);
 }
 
+.img2img-download-btn {
+    position: absolute;
+    top: var(--spacing-xs);
+    right: 44px;
+    /* Positioned to the left of clear button */
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+.img2img-download-btn:hover {
+    background: var(--color-accent-primary);
+}
+
 /* Slider Labels */
 .slider-labels {
     display: flex;
