@@ -21,7 +21,7 @@ import cv2
 import io
 import base64
 import logging
-from typing import Optional
+from typing import Optional, List
 from contextlib import asynccontextmanager
 
 import torch
@@ -46,6 +46,8 @@ class ModelState:
         self.current_model: Optional[str] = None
         self.device: str = "cuda" if torch.cuda.is_available() else "cpu"
         self.dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+        self.current_lora: Optional[str] = None
+        self.current_lora_scale: float = 1.0
 
 model_state = ModelState()
 
@@ -225,6 +227,10 @@ class GenerateRequest(BaseModel):
     guidance_scale: Optional[float] = None  # None = use model default (1.0 for distilled, 3.5 for dev)
     seed: Optional[int] = None
     num_images: Optional[int] = 1  # Number of images to generate (1-6)
+    
+    # LoRA settings
+    lora_name: Optional[str] = None # Name of the LoRA file (e.g., "my_style.safetensors")
+    lora_scale: Optional[float] = 1.0 # Strength of the LoRA (0.0 to 2.0)
 
 class Img2ImgRequest(BaseModel):
     prompt: str
@@ -281,6 +287,60 @@ def stitch_images(image1: Image.Image, image2: Image.Image) -> Image.Image:
     new_image.paste(img2_resized, (new_w1, 0))
     
     return new_image
+
+def get_available_loras() -> List[str]:
+    """Scan the 'loras' directory for .safetensors files."""
+    lora_dir = os.path.join(os.path.dirname(__file__), "loras")
+    if not os.path.exists(lora_dir):
+        os.makedirs(lora_dir, exist_ok=True)
+        return []
+        
+    files = [f for f in os.listdir(lora_dir) if f.endswith(".safetensors")]
+    return sorted(files)
+
+def manage_lora(pipeline, lora_name: Optional[str], lora_scale: float):
+    """Load or unload LoRA weights on the pipeline."""
+    # If no LoRA requested but one is loaded, unload it
+    if not lora_name:
+        if model_state.current_lora is not None:
+            logger.info("Unloading LoRA...")
+            pipeline.unload_lora_weights()
+            model_state.current_lora = None
+            model_state.current_lora_scale = 1.0
+        return
+
+    # If a LoRA is requested
+    lora_path = os.path.join(os.path.dirname(__file__), "loras", lora_name)
+    if not os.path.exists(lora_path):
+        logger.warning(f"Requested LoRA not found: {lora_name}")
+        return
+
+    # If it's a different LoRA than currently loaded, replace it
+    if model_state.current_lora != lora_name:
+        logger.info(f"Loading LoRA: {lora_name}")
+        # Unload previous first to be safe/clean
+        if model_state.current_lora is not None:
+            pipeline.unload_lora_weights()
+            
+        try:
+            pipeline.load_lora_weights(lora_path)
+            model_state.current_lora = lora_name
+        except Exception as e:
+            logger.error(f"Failed to load LoRA {lora_name}: {e}")
+            return
+
+    # Update scale if changed (or if just loaded)
+    # Note: fusion happens via cross_attention_kwargs={"scale": ...} in FLUX usually, 
+    # but diffusers `load_lora_weights` combined with `fuse_lora` or `set_adapters` works differently per pipeline.
+    # For FLUX in recent diffusers, we often use `joint_attention_kwargs` or the `scale` parameter in `cross_attention_kwargs`.
+    # However, `pipeline.fuse_lora(lora_scale=...)` is a persistent way to set it.
+    
+    # Newer diffusers approach:
+    # pipeline.fuse_lora(lora_scale=lora_scale) 
+    # But let's stick to the generation-time argument `joint_attention_kwargs` or similar if possible to avoid altering weights permanently.
+    # ACTUALLY: For FLUX pipeline in diffusers, `load_lora_weights` works. 
+    # To adjust scale dynamically without re-fusing, we pass `joint_attention_kwargs={"scale": lora_scale}` during generation.
+    model_state.current_lora_scale = lora_scale
 
 # =============================================================================
 # FastAPI App
@@ -362,6 +422,11 @@ async def list_models():
         })
     return {"models": models, "current": model_state.current_model}
 
+@app.get("/api/loras")
+async def list_loras():
+    """List available LoRA files."""
+    return {"loras": get_available_loras(), "current_lora": model_state.current_lora}
+
 @app.post("/api/load-model")
 async def switch_model(request: ModelSwitchRequest):
     """Switch to a different FLUX.2 model."""
@@ -394,7 +459,12 @@ async def generate_image(request: GenerateRequest):
         if base_seed is None:
             base_seed = torch.randint(0, 2**32, (1,)).item()
         
+        # Manage LoRA loading BEFORE generation loop
+        manage_lora(model_state.pipeline, request.lora_name, request.lora_scale)
+        
         logger.info(f"Generating {num_images} image(s): prompt='{request.prompt[:50]}...', steps={num_steps}, guidance={guidance}, base_seed={base_seed}")
+        if request.lora_name:
+             logger.info(f"Using LoRA: {request.lora_name} (scale={request.lora_scale})")
         
         generated_images = []
         
@@ -402,6 +472,12 @@ async def generate_image(request: GenerateRequest):
             # Each image gets a unique seed (base_seed + i)
             current_seed = base_seed + i
             generator = torch.Generator(device="cpu").manual_seed(current_seed)
+            
+            # Prepare arguments for LoRA scale
+            extra_kwargs = {}
+            if model_state.current_lora is not None:
+                # For FLUX, the scale is often passed via joint_attention_kwargs
+                extra_kwargs["joint_attention_kwargs"] = {"scale": model_state.current_lora_scale}
             
             # Generate image
             result = model_state.pipeline(
@@ -411,6 +487,7 @@ async def generate_image(request: GenerateRequest):
                 num_inference_steps=num_steps,
                 guidance_scale=guidance,
                 generator=generator,
+                **extra_kwargs
             )
             
             image = result.images[0]
@@ -454,7 +531,11 @@ async def image_to_image(
     num_inference_steps: Optional[int] = Form(None),
     guidance_scale: float = Form(4.0),
     seed: Optional[int] = Form(None),
-    num_images: int = Form(1)
+
+    num_images: int = Form(1),
+    # LoRA params
+    lora_name: Optional[str] = Form(None),
+    lora_scale: float = Form(1.0)
 ):
     """Edit an image using FLUX.2 with a text prompt. Supports multiple inputs via stitching."""
     if model_state.pipeline is None:
@@ -495,8 +576,13 @@ async def image_to_image(
         base_seed = seed
         if base_seed is None:
             base_seed = torch.randint(0, 2**32, (1,)).item()
+            
+        # Manage LoRA loading BEFORE generation loop
+        manage_lora(model_state.pipeline, lora_name, lora_scale)
         
         logger.info(f"Img2Img: {num_images} image(s), prompt='{prompt[:50]}...', steps={num_steps}, guidance={guidance}")
+        if lora_name:
+             logger.info(f"Using LoRA: {lora_name} (scale={lora_scale})")
         
         generated_images = []
         
@@ -505,6 +591,12 @@ async def image_to_image(
             current_seed = base_seed + i
             generator = torch.Generator(device="cpu").manual_seed(current_seed)
             
+            # Prepare arguments for LoRA scale
+            extra_kwargs = {}
+            if model_state.current_lora is not None:
+                # For FLUX, the scale is often passed via joint_attention_kwargs
+                extra_kwargs["joint_attention_kwargs"] = {"scale": model_state.current_lora_scale}
+
             # Generate image (FLUX.2 Klein uses image as reference, doesn't use strength)
             result = model_state.pipeline(
                 prompt=prompt,
@@ -512,6 +604,7 @@ async def image_to_image(
                 num_inference_steps=num_steps,
                 guidance_scale=guidance,
                 generator=generator,
+                **extra_kwargs
             )
             
             output_image = result.images[0]

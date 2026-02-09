@@ -89,6 +89,11 @@ const img2imgDownload2 = document.getElementById('img2img-download-2');
 const strengthSlider = document.getElementById('strength-slider');
 const strengthValue = document.getElementById('strength-value');
 const modelSelect = document.getElementById('model-select');
+const loraSelect = document.getElementById('lora-select');
+const loraScaleSlider = document.getElementById('lora-scale-slider');
+const loraScaleValue = document.getElementById('lora-scale-value');
+const loraScaleContainer = document.getElementById('lora-scale-container');
+const refreshLorasBtn = document.getElementById('refresh-loras-btn');
 const promptInput = document.getElementById('prompt-input');
 const widthSelect = document.getElementById('width-select');
 const heightSelect = document.getElementById('height-select');
@@ -319,6 +324,61 @@ numImagesSlider.addEventListener('input', () => {
 });
 
 // =============================================================================
+// LoRA Logic
+// =============================================================================
+
+async function fetchLoras() {
+    try {
+        const response = await fetch(`${FLUX_API_BASE}/api/loras`);
+        if (response.ok) {
+            const data = await response.json();
+            const currentLora = data.current_lora;
+
+            // Clear existing options (keep None)
+            loraSelect.innerHTML = '<option value="">None</option>';
+
+            data.loras.forEach(lora => {
+                const option = document.createElement('option');
+                option.value = lora;
+                option.textContent = lora.replace('.safetensors', '');
+                if (lora === currentLora) option.selected = true;
+                loraSelect.appendChild(option);
+            });
+
+            // Show slider if LoRA selected
+            if (currentLora) {
+                loraScaleContainer.classList.remove('hidden');
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch LoRAs:', error);
+    }
+}
+
+// Initial fetch
+fetchLoras();
+
+refreshLorasBtn.addEventListener('click', (e) => {
+    e.preventDefault(); // Prevent accidental form submit if inside form
+    fetchLoras();
+    // Add simple animation
+    refreshLorasBtn.classList.add('rotating');
+    setTimeout(() => refreshLorasBtn.classList.remove('rotating'), 500);
+});
+
+loraSelect.addEventListener('change', () => {
+    if (loraSelect.value) {
+        loraScaleContainer.classList.remove('hidden');
+    } else {
+        loraScaleContainer.classList.add('hidden');
+    }
+});
+
+loraScaleSlider.addEventListener('input', () => {
+    loraScaleValue.textContent = loraScaleSlider.value;
+});
+
+// =============================================================================
 // Image Generator - Generate Image
 // =============================================================================
 
@@ -377,8 +437,16 @@ async function generateImage() {
                 requestBody.num_inference_steps = parseInt(stepsInput.value);
             }
 
+
+
             if (seedInput.value) {
                 requestBody.seed = parseInt(seedInput.value);
+            }
+
+            // Add LoRA params
+            if (loraSelect.value) {
+                requestBody.lora_name = loraSelect.value;
+                requestBody.lora_scale = parseFloat(loraScaleSlider.value);
             }
 
             response = await fetch(`${FLUX_API_BASE}/api/generate`, {
@@ -404,8 +472,15 @@ async function generateImage() {
                 formData.append('num_inference_steps', stepsInput.value);
             }
 
+
             if (seedInput.value) {
                 formData.append('seed', seedInput.value);
+            }
+
+            // Add LoRA params
+            if (loraSelect.value) {
+                formData.append('lora_name', loraSelect.value);
+                formData.append('lora_scale', loraScaleSlider.value);
             }
 
             response = await fetch(`${FLUX_API_BASE}/api/img2img`, {
