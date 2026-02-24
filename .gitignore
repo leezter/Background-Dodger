@@ -61,7 +61,20 @@ node_modules/
 npm-debug.log
 yarn-error.log
 
+
 # Potentially temporary / generated files
 *.log
 tmp/
 temp/
+
+# HuggingFace cache artifacts (should never land in the repo)
+*.incomplete
+blobs/
+refs/
+
+# Server: large model weights & LoRA files
+server/weights/
+server/loras/
+
+# get-pip bootstrap (not needed in source control)
+server/get-pip.py

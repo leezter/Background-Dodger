@@ -72,7 +72,10 @@ AVAILABLE_MODELS = {
         "pipeline_class": "Flux2KleinPipeline",
         "vram": "~13GB",
         "distilled": True,
-        "default_guidance": 1.0
+        "default_guidance": 1.0,
+        # Pinned to the locally-cached revision to avoid re-downloading when HuggingFace updates main.
+        # The working snapshot is: 5e67da950fce4a097bc150c22958a05716994cea
+        "revision": "5e67da950fce4a097bc150c22958a05716994cea"
     },
     "klein-4b-fp8": {
         "id": "black-forest-labs/FLUX.2-klein-base-4b-fp8",
@@ -144,10 +147,16 @@ def load_model(model_key: str):
         else:
             PipelineClass = Flux2Pipeline
         
-        # Load pipeline
+        # Load pipeline — use a pinned revision if one is specified in the model config,
+        # so we always load from the locally-cached snapshot instead of re-downloading
+        # when HuggingFace pushes a new commit to main.
+        pinned_revision = model_info.get("revision", None)
+        if pinned_revision:
+            logger.info(f"Using pinned revision: {pinned_revision}")
         model_state.pipeline = PipelineClass.from_pretrained(
             model_id,
             torch_dtype=model_state.dtype,
+            revision=pinned_revision,
         )
         
         # Enable memory optimizations
