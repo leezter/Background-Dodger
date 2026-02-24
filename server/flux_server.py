@@ -562,8 +562,11 @@ async def image_to_image(
             logger.info("Second image received. Stitching images...")
             init_image = stitch_images(init_image, img2)
         
-        # Resize to supported dimensions if needed
-        width, height = init_image.size
+        # Save original dimensions so we can resize the output back
+        original_width, original_height = init_image.size
+        
+        # Resize to supported dimensions for model compatibility
+        width, height = original_width, original_height
         # Round to nearest 64 for model compatibility
         width = (width // 64) * 64
         height = (height // 64) * 64
@@ -610,6 +613,8 @@ async def image_to_image(
             result = model_state.pipeline(
                 prompt=prompt,
                 image=init_image,
+                width=width,
+                height=height,
                 num_inference_steps=num_steps,
                 guidance_scale=guidance,
                 generator=generator,
@@ -617,6 +622,10 @@ async def image_to_image(
             )
             
             output_image = result.images[0]
+            
+            # Resize output to match original source dimensions exactly
+            if output_image.size != (original_width, original_height):
+                output_image = output_image.resize((original_width, original_height), Image.LANCZOS)
             
             # Convert to base64
             buffer = io.BytesIO()
