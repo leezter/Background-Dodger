@@ -915,6 +915,182 @@ body {
     display: none !important;
 }
 
+.gen-result-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    background: var(--bg-tertiary);
+    border: 2px dashed var(--border-color);
+    border-radius: 16px;
+    color: var(--text-light);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Header Progress Bar - Dopamine Trigger */
+.header-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 0%;
+    z-index: 0;
+    /* Ultra-cool neon plasma gradient */
+    background: linear-gradient(90deg, #ff0844, #ffb199, #f6d365, #fda085, #f093fb, #f5576c, #4facfe, #00f2fe, #43e97b, #38f9d7);
+    background-size: 1000% 100%;
+    animation: dopaminePlasma 5s linear infinite;
+    box-shadow: 0 0 30px rgba(0, 242, 254, 0.6), inset 0 0 20px rgba(255, 255, 255, 0.4);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+}
+
+/* Leading edge glow effect */
+.header-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 30px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+    box-shadow: 0 0 30px 15px rgba(255, 255, 255, 0.5);
+    filter: blur(2px);
+    border-radius: 50%;
+    transform: translateX(50%);
+}
+
+.header-progress-fill.active {
+    opacity: 1;
+}
+
+/* Initializing State - Hyper-Charge Engine ignition */
+.header-progress-fill.initializing {
+    width: 100% !important;
+    background: linear-gradient(90deg, #8A2387, #E94057, #F27121);
+    background-size: 300% 300%;
+    animation: hyperCharge 1.5s ease-in-out infinite alternate;
+    box-shadow: inset 0 0 40px rgba(233, 64, 87, 0.8), 0 0 30px rgba(233, 64, 87, 0.6);
+}
+
+.header-progress-fill.initializing::after {
+    display: none;
+}
+
+@keyframes dopaminePlasma {
+    0% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+@keyframes hyperCharge {
+    0% {
+        background-position: 0% 50%;
+        opacity: 0.8;
+        filter: brightness(1) drop-shadow(0 0 10px #E94057);
+    }
+
+    100% {
+        background-position: 100% 50%;
+        opacity: 1;
+        filter: brightness(1.5) drop-shadow(0 0 30px #F27121);
+    }
+}
+
+/* Title Icon spin for initialization */
+.gen-result-title {
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.3s ease;
+}
+
+.gen-result-title .init-spinner {
+    height: 32px;
+    width: 32px;
+    display: none;
+    color: #fff;
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.8));
+    animation: scalePulse 2s infinite alternate;
+}
+
+.header-progress-fill.initializing~.gen-result-title .init-spinner {
+    display: inline-block;
+}
+
+.header-progress-fill.active~.gen-result-title,
+.header-progress-fill.initializing~.gen-result-title {
+    color: white;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.6), 0 0 30px var(--color-accent-primary);
+    transform: scale(1.02);
+    letter-spacing: 1px;
+}
+
+.spinner-ring {
+    animation: spinIcon 1.5s linear infinite;
+    stroke: #00f2fe;
+    transform-origin: center;
+}
+
+.spinner-core {
+    animation: spinReverseIcon 1s linear infinite;
+    stroke: #ff0844;
+    transform-origin: center;
+}
+
+.spinner-dot {
+    animation: pulseObj 0.5s infinite alternate;
+    color: #fff;
+}
+
+@keyframes spinIcon {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes spinReverseIcon {
+    100% {
+        transform: rotate(-360deg);
+    }
+}
+
+@keyframes scalePulse {
+    0% {
+        transform: scale(0.9);
+    }
+
+    100% {
+        transform: scale(1.1);
+    }
+}
+
+@keyframes pulseObj {
+    0% {
+        opacity: 0.5;
+        transform: scale(0.8);
+        transform-origin: center;
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1.2);
+        transform-origin: center;
+    }
+}
+
+.gen-result-placeholder span {
+    margin-top: 60px;
+    /* Make room for the absolute header in the placeholder */
+}
+
 .gen-result-header {
     display: flex;
     align-items: center;
@@ -1082,9 +1258,24 @@ body {
     position: relative;
     background: var(--color-bg-secondary);
     border-radius: var(--radius-md);
+    animation: imageReveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     overflow: hidden;
     border: 1px solid var(--color-border);
     transition: all var(--transition-base);
+}
+
+@keyframes imageReveal {
+    0% {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+        box-shadow: 0 0 0 rgba(139, 92, 246, 0);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.15);
+    }
 }
 
 .gallery-item:hover {

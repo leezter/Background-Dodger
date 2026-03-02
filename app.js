@@ -186,48 +186,26 @@ let generatedImages = []; // Array of {image: base64, seed: number}
 
 let progressInterval = null;
 
-function formatTerminalProgress(step, totalSteps, startTime) {
-    if (totalSteps <= 0) return '[>...................] 0% 0/0';
-    const percent = Math.min(100, Math.floor((step / totalSteps) * 100));
-    const progressChars = 20;
-    const filledChars = Math.floor((percent / 100) * progressChars);
+function startProgressPolling(headerRealId, headerPlaceholderId) {
+    const realEl = document.getElementById(headerRealId);
+    const placeholderEl = document.getElementById(headerPlaceholderId);
 
-    let bar = '';
-    for (let i = 0; i < progressChars; i++) {
-        if (i < filledChars) {
-            bar += '=';
-        } else if (i === filledChars) {
-            bar += '>';
-        } else {
-            bar += '.';
-        }
+    const updateTitleText = (text) => {
+        document.querySelectorAll('.title-text').forEach(s => s.textContent = text);
+    };
+
+    // Initial state before polling loop kicks in
+    updateTitleText('Igniting AI Engine...');
+
+    // Reset and activate
+    if (realEl) {
+        realEl.style.width = '0%';
+        realEl.classList.add('active');
     }
-
-    let timeEstimation = '';
-    if (step > 0 && startTime > 0) {
-        const elapsedSeconds = (Date.now() / 1000) - startTime;
-        const timePerStep = elapsedSeconds / step;
-        const remainingSteps = totalSteps - step;
-        const remainingSeconds = Math.max(0, Math.round(remainingSteps * timePerStep));
-
-        const formatTime = (secs) => {
-            const m = Math.floor(secs / 60);
-            const s = Math.floor(secs % 60);
-            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        };
-
-        timeEstimation = ` [${formatTime(elapsedSeconds)}<${formatTime(remainingSeconds)}]`;
+    if (placeholderEl) {
+        placeholderEl.style.width = '0%';
+        placeholderEl.classList.add('active');
     }
-
-    return `[${bar}] ${percent}% ${step}/${totalSteps}${timeEstimation}`;
-}
-
-function startProgressPolling(fillElementId, textElementId) {
-    const fillEl = document.getElementById(fillElementId);
-    const textEl = document.getElementById(textElementId);
-
-    if (fillEl) fillEl.style.width = '0%';
-    if (textEl) textEl.textContent = '[>...................] 0% 0/0';
 
     if (progressInterval) clearInterval(progressInterval);
 
@@ -238,9 +216,33 @@ function startProgressPolling(fillElementId, textElementId) {
                 const data = await res.json();
                 if (data.is_running && data.total_steps > 0) {
                     const percent = Math.min(100, (data.step / data.total_steps) * 100);
-                    if (fillEl) fillEl.style.width = `${percent}%`;
-                    if (textEl) {
-                        textEl.textContent = formatTerminalProgress(data.step, data.total_steps, data.start_time);
+
+                    if (data.step === 0) {
+                        // Still initializing
+                        updateTitleText('Igniting AI Engine...');
+
+                        if (realEl) {
+                            realEl.classList.add('initializing');
+                            realEl.classList.remove('active');
+                        }
+                        if (placeholderEl) {
+                            placeholderEl.classList.add('initializing');
+                            placeholderEl.classList.remove('active');
+                        }
+                    } else {
+                        // Progress started
+                        updateTitleText('Generating Masterpiece... ⚡');
+
+                        if (realEl) {
+                            realEl.classList.remove('initializing');
+                            realEl.classList.add('active');
+                            realEl.style.width = `${percent}%`;
+                        }
+                        if (placeholderEl) {
+                            placeholderEl.classList.remove('initializing');
+                            placeholderEl.classList.add('active');
+                            placeholderEl.style.width = `${percent}%`;
+                        }
                     }
                 }
             }
@@ -498,7 +500,7 @@ async function generateImage() {
         const imageText = numImages === 1 ? 'image' : `${numImages} images`;
         genStatusText.textContent = `Generating ${imageText}...`;
 
-        startProgressPolling('gen-progress-fill', 'gen-progress-text');
+        startProgressPolling('gen-header-progress', 'gen-header-progress-placeholder');
 
         let response;
 
@@ -602,10 +604,27 @@ async function generateImage() {
         showError(error.message || 'Failed to generate image');
     } finally {
         stopProgressPolling();
-        const textEl = document.getElementById('gen-progress-text');
-        const fillEl = document.getElementById('gen-progress-fill');
-        if (fillEl) fillEl.style.width = '100%';
-        if (textEl) textEl.textContent = '[===================>] 100% DONE';
+
+        document.querySelectorAll('.title-text').forEach(s => s.textContent = 'Generated Images');
+
+        // Ensure 100% completion state is visible momentarily before fading out
+        ['gen-header-progress', 'gen-header-progress-placeholder'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.remove('initializing');
+                el.classList.add('active');
+                el.style.width = '100%';
+
+                // Visually satisfying completion flash
+                const originalShadow = el.style.boxShadow;
+                el.style.boxShadow = '0 0 50px rgba(255,255,255,1), inset 0 0 30px rgba(255,255,255,1)';
+
+                setTimeout(() => {
+                    el.classList.remove('active');
+                    el.style.boxShadow = originalShadow;
+                }, 1500);
+            }
+        });
 
         generateBtn.disabled = false;
         genStatus.classList.add('hidden');

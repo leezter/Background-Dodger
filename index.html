@@ -418,18 +418,10 @@
                                 </button>
 
                                 <!-- Status -->
-                                <div id="gen-status" class="gen-status hidden"
-                                    style="flex-direction: column; align-items: center; gap: 8px;">
+                                <div id="gen-status" class="gen-status hidden">
                                     <div style="display: flex; align-items: center; gap: 8px;">
                                         <div class="spinner-small"></div>
                                         <span id="gen-status-text">Connecting to server...</span>
-                                    </div>
-                                    <div class="progress-bar" style="width: 100%;">
-                                        <div id="gen-progress-fill" class="progress-fill" style="width: 0%;"></div>
-                                    </div>
-                                    <div id="gen-progress-text"
-                                        style="font-family: monospace; font-size: 0.85rem; color: var(--text-light); width: 100%; text-align: center;">
-                                        [>...................] 0% 0/0
                                     </div>
                                 </div>
                             </div>
@@ -447,9 +439,19 @@
 
                             <!-- Result Display (always visible, shows placeholder when empty) -->
                             <div id="gen-result" class="gen-result hidden">
-                                <div class="gen-result-header">
-                                    <h3 class="gen-result-title">Generated Images</h3>
-                                    <div class="gen-result-actions">
+                                <div class="gen-result-header" style="position: relative; overflow: hidden;">
+                                    <div id="gen-header-progress" class="header-progress-fill"></div>
+                                    <h3 class="gen-result-title" style="position: relative; z-index: 10;">
+                                        <span class="title-text">Generated Images</span>
+                                        <svg class="init-spinner" xmlns="http://www.w3.org/2000/svg" width="32"
+                                            height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10" stroke-dasharray="16" class="spinner-ring" />
+                                            <circle cx="12" cy="12" r="6" stroke-dasharray="10" class="spinner-core" />
+                                            <circle cx="12" cy="12" r="2" fill="currentColor" class="spinner-dot" />
+                                        </svg>
+                                    </h3>
+                                    <div class="gen-result-actions" style="position: relative; z-index: 10;">
                                         <button id="gen-download-all-btn" class="btn btn-secondary btn-small hidden">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -469,6 +471,21 @@
 
                             <!-- Placeholder when no image generated -->
                             <div id="gen-result-placeholder" class="gen-result-placeholder">
+                                <div class="gen-result-header placeholder-header"
+                                    style="position: absolute; top: 0; left: 0; right: 0; border-bottom: 1px solid var(--border-color); padding: 16px 24px;">
+                                    <div id="gen-header-progress-placeholder" class="header-progress-fill"></div>
+                                    <h3 class="gen-result-title"
+                                        style="position: relative; z-index: 10; margin: 0; font-size: 1rem; font-weight: 500; color: var(--text-light);">
+                                        <span class="title-text">Generated Images</span>
+                                        <svg class="init-spinner" xmlns="http://www.w3.org/2000/svg" width="32"
+                                            height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10" stroke-dasharray="16" class="spinner-ring" />
+                                            <circle cx="12" cy="12" r="6" stroke-dasharray="10" class="spinner-core" />
+                                            <circle cx="12" cy="12" r="2" fill="currentColor" class="spinner-dot" />
+                                        </svg>
+                                    </h3>
+                                </div>
                                 <span>Your generated image will appear here</span>
                             </div>
                         </div>
