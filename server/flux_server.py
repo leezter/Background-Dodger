@@ -21,6 +21,7 @@ import cv2
 import io
 import base64
 import logging
+import time
 from typing import Optional, List
 from contextlib import asynccontextmanager
 
@@ -50,6 +51,15 @@ class ModelState:
         self.current_lora_scale: float = 1.0
 
 model_state = ModelState()
+
+class ProgressState:
+    def __init__(self):
+        self.step = 0
+        self.total_steps = 0
+        self.is_running = False
+        self.start_time = 0
+
+progress_state = ProgressState()
 
 # Real-ESRGAN State
 class UpscalerState:
@@ -416,6 +426,16 @@ async def health_check():
         "device": model_state.device
     }
 
+@app.get("/api/progress")
+async def get_progress():
+    """Get current generation progress."""
+    return {
+        "step": progress_state.step,
+        "total_steps": progress_state.total_steps,
+        "is_running": progress_state.is_running,
+        "start_time": progress_state.start_time
+    }
+
 @app.get("/api/models")
 async def list_models():
     """List available FLUX.2 models."""
@@ -437,7 +457,7 @@ async def list_loras():
     return {"loras": get_available_loras(), "current_lora": model_state.current_lora}
 
 @app.post("/api/load-model")
-async def switch_model(request: ModelSwitchRequest):
+def switch_model(request: ModelSwitchRequest):
     """Switch to a different FLUX.2 model."""
     try:
         load_model(request.model)
@@ -448,7 +468,7 @@ async def switch_model(request: ModelSwitchRequest):
         raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
 @app.post("/api/generate", response_model=GenerateResponse)
-async def generate_image(request: GenerateRequest):
+def generate_image(request: GenerateRequest):
     """Generate one or more images from a text prompt using FLUX.2."""
     if model_state.pipeline is None:
         raise HTTPException(status_code=503, detail="No model loaded")
@@ -477,6 +497,11 @@ async def generate_image(request: GenerateRequest):
         
         generated_images = []
         
+        progress_state.is_running = True
+        progress_state.total_steps = num_steps * num_images
+        progress_state.step = 0
+        progress_state.start_time = time.time()
+        
         for i in range(num_images):
             # Each image gets a unique seed (base_seed + i)
             current_seed = base_seed + i
@@ -488,6 +513,10 @@ async def generate_image(request: GenerateRequest):
                 # For FLUX, the scale is often passed via joint_attention_kwargs
                 extra_kwargs["joint_attention_kwargs"] = {"scale": model_state.current_lora_scale}
             
+            def callback_on_step_end(pipe, step_index, timestep, callback_kwargs):
+                progress_state.step = i * num_steps + step_index + 1
+                return callback_kwargs
+
             # Generate image
             result = model_state.pipeline(
                 prompt=request.prompt,
@@ -496,6 +525,7 @@ async def generate_image(request: GenerateRequest):
                 num_inference_steps=num_steps,
                 guidance_scale=guidance,
                 generator=generator,
+                callback_on_step_end=callback_on_step_end,
                 **extra_kwargs
             )
             
@@ -516,14 +546,17 @@ async def generate_image(request: GenerateRequest):
         logger.info(f"All {num_images} image(s) generated successfully")
         
         # Return response - include both single image (backward compatible) and images array
-        return GenerateResponse(
+        response = GenerateResponse(
             success=True,
             image=generated_images[0]["image"] if generated_images else None,
             images=generated_images,
             seed=generated_images[0]["seed"] if generated_images else None
         )
+        progress_state.is_running = False
+        return response
         
     except Exception as e:
+        progress_state.is_running = False
         logger.error(f"Generation failed: {e}")
         return GenerateResponse(
             success=False,
@@ -531,7 +564,7 @@ async def generate_image(request: GenerateRequest):
         )
 
 @app.post("/api/img2img", response_model=GenerateResponse)
-async def image_to_image(
+def image_to_image(
     image: UploadFile = File(...),
     image2: Optional[UploadFile] = File(None), # Second optional image
     prompt: str = Form(...),
@@ -552,12 +585,12 @@ async def image_to_image(
     
     try:
         # Load the first image
-        image_data = await image.read()
+        image_data = image.file.read()
         init_image = Image.open(io.BytesIO(image_data)).convert("RGB")
         
         # Load second image if present
         if image2:
-            image2_data = await image2.read()
+            image2_data = image2.file.read()
             img2 = Image.open(io.BytesIO(image2_data)).convert("RGB")
             logger.info("Second image received. Stitching images...")
             init_image = stitch_images(init_image, img2)
@@ -597,6 +630,11 @@ async def image_to_image(
              logger.info(f"Using LoRA: {lora_name} (scale={lora_scale})")
         
         generated_images = []
+
+        progress_state.is_running = True
+        progress_state.total_steps = num_steps * num_images
+        progress_state.step = 0
+        progress_state.start_time = time.time()
         
         for i in range(num_images):
             # Each image gets a unique seed
@@ -609,6 +647,10 @@ async def image_to_image(
                 # For FLUX, the scale is often passed via joint_attention_kwargs
                 extra_kwargs["joint_attention_kwargs"] = {"scale": model_state.current_lora_scale}
 
+            def callback_on_step_end_img2img(pipe, step_index, timestep, callback_kwargs):
+                progress_state.step = i * num_steps + step_index + 1
+                return callback_kwargs
+
             # Generate image (FLUX.2 Klein uses image as reference, doesn't use strength)
             result = model_state.pipeline(
                 prompt=prompt,
@@ -618,6 +660,7 @@ async def image_to_image(
                 num_inference_steps=num_steps,
                 guidance_scale=guidance,
                 generator=generator,
+                callback_on_step_end=callback_on_step_end_img2img,
                 **extra_kwargs
             )
             
@@ -641,14 +684,17 @@ async def image_to_image(
         
         logger.info(f"All {num_images} Img2Img image(s) completed successfully")
         
-        return GenerateResponse(
+        response = GenerateResponse(
             success=True,
             image=generated_images[0]["image"] if generated_images else None,
             images=generated_images,
             seed=generated_images[0]["seed"] if generated_images else None
         )
+        progress_state.is_running = False
+        return response
         
     except Exception as e:
+        progress_state.is_running = False
         logger.error(f"Img2Img failed: {e}")
         return GenerateResponse(
             success=False,
@@ -660,7 +706,7 @@ async def image_to_image(
 # =============================================================================
 
 @app.post("/api/upscale", response_model=GenerateResponse)
-async def upscale_image(
+def upscale_image(
     image: UploadFile = File(...),
     scale: float = Form(4.0),
     face_enhance: bool = Form(False)
@@ -678,7 +724,7 @@ async def upscale_image(
     
     try:
         # Load image
-        contents = await image.read()
+        contents = image.file.read()
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
@@ -688,14 +734,22 @@ async def upscale_image(
         # Upscale
         logger.info(f"Upscaling image... scale={scale}, face_enhance={face_enhance}")
         
+        progress_state.is_running = True
+        progress_state.total_steps = 100
+        progress_state.step = 10
+        progress_state.start_time = time.time()
+
         # Real-ESRGAN output is numpy array (H, W, C) in BGR
         try:
+            progress_state.step = 30
             output, _ = upscaler_state.upscaler.enhance(img, outscale=scale)
+            progress_state.step = 90
         except RuntimeError as e:
             # Fallback for tiled processing if OOM
             logger.warning(f"Upscaling failed, trying with tiling: {e}")
             upscaler_state.upscaler.tile_size = 512
             output, _ = upscaler_state.upscaler.enhance(img, outscale=scale)
+            progress_state.step = 90
 
         # Convert back to base64
         # Encode as PNG
@@ -705,12 +759,16 @@ async def upscale_image(
              
         image_base64 = base64.b64encode(buffer).decode("utf-8")
         
+        progress_state.is_running = False
+        progress_state.step = 100
+        
         return GenerateResponse(
             success=True,
             image=image_base64
         )
 
     except Exception as e:
+        progress_state.is_running = False
         logger.error(f"Upscaling failed: {e}")
         import traceback
         traceback.print_exc()

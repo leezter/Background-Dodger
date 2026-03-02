@@ -181,6 +181,83 @@ let img2imgFile2 = null;
 let generatedImages = []; // Array of {image: base64, seed: number}
 
 // =============================================================================
+// Progress Polling Utility
+// =============================================================================
+
+let progressInterval = null;
+
+function formatTerminalProgress(step, totalSteps, startTime) {
+    if (totalSteps <= 0) return '[>...................] 0% 0/0';
+    const percent = Math.min(100, Math.floor((step / totalSteps) * 100));
+    const progressChars = 20;
+    const filledChars = Math.floor((percent / 100) * progressChars);
+
+    let bar = '';
+    for (let i = 0; i < progressChars; i++) {
+        if (i < filledChars) {
+            bar += '=';
+        } else if (i === filledChars) {
+            bar += '>';
+        } else {
+            bar += '.';
+        }
+    }
+
+    let timeEstimation = '';
+    if (step > 0 && startTime > 0) {
+        const elapsedSeconds = (Date.now() / 1000) - startTime;
+        const timePerStep = elapsedSeconds / step;
+        const remainingSteps = totalSteps - step;
+        const remainingSeconds = Math.max(0, Math.round(remainingSteps * timePerStep));
+
+        const formatTime = (secs) => {
+            const m = Math.floor(secs / 60);
+            const s = Math.floor(secs % 60);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        };
+
+        timeEstimation = ` [${formatTime(elapsedSeconds)}<${formatTime(remainingSeconds)}]`;
+    }
+
+    return `[${bar}] ${percent}% ${step}/${totalSteps}${timeEstimation}`;
+}
+
+function startProgressPolling(fillElementId, textElementId) {
+    const fillEl = document.getElementById(fillElementId);
+    const textEl = document.getElementById(textElementId);
+
+    if (fillEl) fillEl.style.width = '0%';
+    if (textEl) textEl.textContent = '[>...................] 0% 0/0';
+
+    if (progressInterval) clearInterval(progressInterval);
+
+    progressInterval = setInterval(async () => {
+        try {
+            const res = await fetch(`${FLUX_API_BASE}/api/progress`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.is_running && data.total_steps > 0) {
+                    const percent = Math.min(100, (data.step / data.total_steps) * 100);
+                    if (fillEl) fillEl.style.width = `${percent}%`;
+                    if (textEl) {
+                        textEl.textContent = formatTerminalProgress(data.step, data.total_steps, data.start_time);
+                    }
+                }
+            }
+        } catch (e) {
+            // Ignore polling errors
+        }
+    }, 500);
+}
+
+function stopProgressPolling() {
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+}
+
+// =============================================================================
 // Image Generator - Mode Toggle
 // =============================================================================
 
@@ -421,6 +498,8 @@ async function generateImage() {
         const imageText = numImages === 1 ? 'image' : `${numImages} images`;
         genStatusText.textContent = `Generating ${imageText}...`;
 
+        startProgressPolling('gen-progress-fill', 'gen-progress-text');
+
         let response;
 
         if (generatorMode === 'text2img') {
@@ -522,6 +601,12 @@ async function generateImage() {
         console.error('Generation failed:', error);
         showError(error.message || 'Failed to generate image');
     } finally {
+        stopProgressPolling();
+        const textEl = document.getElementById('gen-progress-text');
+        const fillEl = document.getElementById('gen-progress-fill');
+        if (fillEl) fillEl.style.width = '100%';
+        if (textEl) textEl.textContent = '[===================>] 100% DONE';
+
         generateBtn.disabled = false;
         genStatus.classList.add('hidden');
     }
@@ -1359,6 +1444,8 @@ async function upscaleImage() {
 
         upscaleStatusText.textContent = 'Upscaling image (this may take 10-20 seconds)...';
 
+        startProgressPolling('upscale-progress-fill', 'upscale-progress-text');
+
         const formData = new FormData();
         formData.append('image', upscaleFile);
         formData.append('scale', upscaleFactor.value);
@@ -1388,6 +1475,12 @@ async function upscaleImage() {
         console.error('Upscaling failed:', error);
         showError(error.message || 'Failed to upscale image');
     } finally {
+        stopProgressPolling();
+        const textEl = document.getElementById('upscale-progress-text');
+        const fillEl = document.getElementById('upscale-progress-fill');
+        if (fillEl) fillEl.style.width = '100%';
+        if (textEl) textEl.textContent = '[===================>] 100% DONE';
+
         upscaleBtn.disabled = false;
         upscaleStatus.classList.add('hidden');
     }
