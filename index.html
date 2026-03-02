@@ -193,13 +193,18 @@
                             <div class="generator-card-content">
                                 <!-- Mode Toggle -->
                                 <div class="mode-toggle">
-                                    <button class="mode-btn active" data-mode="text2img">Text to Image</button>
-                                    <button class="mode-btn" data-mode="img2img">Image to Image</button>
+                                    <button class="mode-btn active" data-mode="text2img"
+                                        title="Generate an image entirely from your text description.">Text to
+                                        Image</button>
+                                    <button class="mode-btn" data-mode="img2img"
+                                        title="Use a source image along with your text description to guide the output.">Image
+                                        to Image</button>
                                 </div>
 
                                 <!-- Model Selection -->
                                 <div class="form-group">
-                                    <label class="form-label">Model</label>
+                                    <label class="form-label"
+                                        title="Select the underlying AI model. Larger models (e.g. 9B, Dev) produce higher quality but are slower and use more memory. Smaller models (e.g. 4B) are faster.">Model</label>
                                     <select id="model-select" class="form-select">
                                         <option value="klein-4b">FLUX.2 Klein 4B (Fast, ~13GB VRAM)</option>
                                         <option value="klein-4b-fp8">FLUX.2 Klein 4B FP8 (Faster, ~8GB VRAM)</option>
@@ -211,7 +216,9 @@
                                 <!-- LoRA Selection -->
                                 <div class="form-group">
                                     <div class="form-label-row">
-                                        <label class="form-label">LoRA Style</label>
+                                        <label class="form-label"
+                                            title="Apply a Low-Rank Adaptation (LoRA) to stylisticly alter the generated image with a specific artistic style, concept, or subject focus.">LoRA
+                                            Style</label>
                                         <button id="refresh-loras-btn" class="icon-btn" title="Refresh LoRA list">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -231,14 +238,18 @@
 
                                 <!-- LoRA Scale Slider (Hidden by default) -->
                                 <div id="lora-scale-container" class="form-group hidden">
-                                    <label class="form-label">LoRA Scale: <span id="lora-scale-value">1.0</span></label>
+                                    <label class="form-label"
+                                        title="Adjust the intensity of the applied LoRA style. A higher value makes the style more prominent but might distort the image, while a lower value applies it subtly.">LoRA
+                                        Scale: <span id="lora-scale-value">1.0</span></label>
                                     <input type="range" id="lora-scale-slider" class="form-range" min="0" max="2.0"
                                         step="0.1" value="1.0">
                                 </div>
 
                                 <!-- Image Upload for img2img (hidden by default) -->
                                 <div id="img2img-upload" class="form-group hidden">
-                                    <label class="form-label">Source Images</label>
+                                    <label class="form-label"
+                                        title="Upload the original image(s) to be transformed. The generation process will modify this base image guided by your prompt.">Source
+                                        Images</label>
 
                                     <!-- Image 1 -->
                                     <div class="img2img-source-container">
@@ -315,8 +326,9 @@
 
                                     <!-- Strength slider for img2img -->
                                     <div class="form-group-inline mt-3">
-                                        <label class="form-label">Strength: <span
-                                                id="strength-value">0.75</span></label>
+                                        <label class="form-label"
+                                            title="Determine how much the generated image can deviate from the source image. Lower values keep the result closer to the original, while higher values allow for more drastic changes.">Strength:
+                                            <span id="strength-value">0.75</span></label>
                                         <input type="range" id="strength-slider" class="form-range" min="0.1" max="1.0"
                                             step="0.05" value="0.75">
                                     </div>
@@ -324,15 +336,17 @@
 
                                 <!-- Prompt Input -->
                                 <div class="form-group">
-                                    <label class="form-label">Prompt</label>
+                                    <label class="form-label"
+                                        title="Enter a detailed text description of what you want the AI to create. Be specific about subjects, style, lighting, and composition for optimal results.">Prompt</label>
                                     <textarea id="prompt-input" class="form-textarea" rows="3"
                                         placeholder="Describe the image you want to generate..."></textarea>
                                 </div>
 
                                 <!-- Number of Images Slider -->
                                 <div class="form-group">
-                                    <label class="form-label">Images to Generate: <span
-                                            id="num-images-value">1</span></label>
+                                    <label class="form-label"
+                                        title="Choose the total number of images you want the AI to generate in a single run. Generating more images takes proportionally longer.">Images
+                                        to Generate: <span id="num-images-value">1</span></label>
                                     <input type="range" id="num-images-slider" class="form-range" min="1" max="6"
                                         step="1" value="1">
                                     <div class="slider-labels">
@@ -347,7 +361,8 @@
                                     <div class="advanced-content">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label class="form-label">Width</label>
+                                                <label class="form-label"
+                                                    title="Set the width of the generated image in pixels. Larger dimensions increase detail but require more generation time and VRAM.">Width</label>
                                                 <select id="width-select" class="form-select">
                                                     <option value="512">512</option>
                                                     <option value="768">768</option>
@@ -356,7 +371,8 @@
                                                 </select>
                                             </div>
                                             <div class="form-group">
-                                                <label class="form-label">Height</label>
+                                                <label class="form-label"
+                                                    title="Set the height of the generated image in pixels. Larger dimensions increase detail but require more generation time and VRAM.">Height</label>
                                                 <select id="height-select" class="form-select">
                                                     <option value="512">512</option>
                                                     <option value="768">768</option>
@@ -367,19 +383,21 @@
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label class="form-label">Steps</label>
+                                                <label class="form-label"
+                                                    title="Number of denoising steps the AI takes to generate the image. More steps generally result in higher quality, but increase generation time.">Steps</label>
                                                 <input type="number" id="steps-input" class="form-input"
                                                     placeholder="Auto" min="1" max="50">
                                             </div>
                                             <div class="form-group">
-                                                <label class="form-label">Seed</label>
+                                                <label class="form-label"
+                                                    title="A specific number to initialize the generation. Using the exact same seed and settings will reproduce the identical image. Leave blank for a random result.">Seed</label>
                                                 <input type="number" id="seed-input" class="form-input"
                                                     placeholder="Random">
                                             </div>
                                         </div>
                                         <div class="form-group">
                                             <label class="form-label"
-                                                title="Distilled FLUX models (Klein) work best with low guidance (~1.0). Higher values may cause over-saturation.">Guidance
+                                                title="Control how closely the AI follows your text prompt. Distilled FLUX models (Klein) work best with low guidance (~1.0). Higher values force stricter adherence but may cause over-saturation or artifacts.">Guidance
                                                 Scale: <span id="guidance-value">1.0</span></label>
                                             <input type="range" id="guidance-slider" class="form-range" min="1" max="10"
                                                 step="0.5" value="1.0">
@@ -472,7 +490,9 @@
                             <div class="generator-card-content">
                                 <!-- Source Image Upload -->
                                 <div class="form-group">
-                                    <label class="form-label">Source Image</label>
+                                    <label class="form-label"
+                                        title="Upload the starting image that the AI will animate into a video sequence.">Source
+                                        Image</label>
                                     <div id="video-source-drop-zone" class="drop-zone drop-zone-small">
                                         <div class="drop-zone-content">
                                             <div class="upload-icon-small">
@@ -498,7 +518,8 @@
 
                                 <!-- Prompt Input -->
                                 <div class="form-group">
-                                    <label class="form-label">Prompt</label>
+                                    <label class="form-label"
+                                        title="Describe the specific animation or movement you want to see happen to the source image. Be clear about the direction, style, and dynamics of the motion.">Prompt</label>
                                     <textarea id="video-prompt-input" class="form-textarea" rows="3"
                                         placeholder="Describe how you want the image to animate..."></textarea>
                                 </div>
@@ -509,7 +530,8 @@
                                     <div class="advanced-content">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label class="form-label">Frames</label>
+                                                <label class="form-label"
+                                                    title="Set the total number of frames in the generated video. More frames produce a longer animation but will take significantly more processing time.">Frames</label>
                                                 <select id="video-frames-select" class="form-select">
                                                     <option value="17">17</option>
                                                     <option value="25">25</option>
@@ -519,7 +541,8 @@
                                                 </select>
                                             </div>
                                             <div class="form-group">
-                                                <label class="form-label">FPS</label>
+                                                <label class="form-label"
+                                                    title="Frames Per Second (FPS). Determines how smoothly and quickly the generated video plays back. Higher FPS means smoother but faster movement over the generated frames.">FPS</label>
                                                 <select id="video-fps-select" class="form-select">
                                                     <option value="4">4 (slower)</option>
                                                     <option value="8" selected>8 (default)</option>
@@ -530,20 +553,23 @@
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label class="form-label">Steps</label>
+                                                <label class="form-label"
+                                                    title="Number of denoising steps used per frame. More steps improve the quality and consistency of the animation but proportionally increase the total rendering time.">Steps</label>
                                                 <input type="number" id="video-steps-input" class="form-input"
                                                     placeholder="50" min="10" max="100" value="50">
                                             </div>
                                             <div class="form-group">
-                                                <label class="form-label">Seed</label>
+                                                <label class="form-label"
+                                                    title="A specific number to initialize the video generation. Keeping the seed identical across attempts helps to lock in an overall animation progression style. Leave blank for a random effect.">Seed</label>
                                                 <input type="number" id="video-seed-input" class="form-input"
                                                     placeholder="Random">
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group" style="flex: 1;">
-                                                <label class="form-label">Guidance: <span
-                                                        id="video-guidance-value">6.0</span></label>
+                                                <label class="form-label"
+                                                    title="Controls how strongly the video output is adjusted to match the text prompt. Higher values force the animation to strictly follow your instructions, but may sacrifice visual smoothness or realism.">Guidance:
+                                                    <span id="video-guidance-value">6.0</span></label>
                                                 <input type="range" id="video-guidance-slider" class="form-range"
                                                     min="1" max="15" step="0.5" value="6.0">
                                             </div>
@@ -630,7 +656,9 @@
                             <div class="generator-card-content">
                                 <!-- Source Image Upload -->
                                 <div class="form-group">
-                                    <label class="form-label">Source Image</label>
+                                    <label class="form-label"
+                                        title="Upload a low-resolution image to be enhanced and enlarged.">Source
+                                        Image</label>
                                     <div id="upscale-drop-zone" class="drop-zone drop-zone-small">
                                         <div class="drop-zone-content">
                                             <div class="upload-icon-small">
@@ -666,15 +694,20 @@
 
                                 <!-- Settings -->
                                 <div class="form-group">
-                                    <label class="form-label">Scale Factor</label>
+                                    <label class="form-label"
+                                        title="Select the multiplier for increasing the image's resolution. For instance, 4x will multiply the width and height by four using AI interpolation.">Scale
+                                        Factor</label>
                                     <select id="upscale-factor" class="form-select">
                                         <option value="4.0" selected>4x (Real-ESRGAN)</option>
                                     </select>
                                 </div>
 
                                 <div class="form-group-checkbox">
-                                    <input type="checkbox" id="upscale-face-enhance" class="form-checkbox">
-                                    <label for="upscale-face-enhance" class="form-label-checkbox">Face Enhancement
+                                    <input type="checkbox" id="upscale-face-enhance" class="form-checkbox"
+                                        title="Turn this on to use GFPGAN specifically for detecting and clarifying facial features in blurry portraits. (Feature currently in development)">
+                                    <label for="upscale-face-enhance" class="form-label-checkbox"
+                                        title="Turn this on to use GFPGAN specifically for detecting and clarifying facial features in blurry portraits. (Feature currently in development)">Face
+                                        Enhancement
                                         (GFPGAN) - Coming Soon</label>
                                 </div>
 
