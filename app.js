@@ -631,6 +631,31 @@ async function generateImage() {
     }
 }
 
+// =============================================================================
+// Gallery Entrance Animations
+// =============================================================================
+
+const ENTRANCE_ANIMATIONS = [
+    'gallery-anim-cosmic-zoom',
+    'gallery-anim-balloon-pop',
+    'gallery-anim-slide-left',
+    'gallery-anim-slide-right',
+    'gallery-anim-drop-bounce',
+    'gallery-anim-spiral-in',
+    'gallery-anim-glitch',
+    'gallery-anim-unfold',
+];
+
+// Fisher-Yates shuffle (returns a new array)
+function shuffleArray(arr) {
+    const shuffled = [...arr];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
 // Display images in gallery grid
 function displayGallery(images) {
     genResultGallery.innerHTML = '';
@@ -647,9 +672,13 @@ function displayGallery(images) {
         genResultGallery.classList.add('many-images');
     }
 
+    // Shuffle animations so each image in a batch gets a different one
+    const shuffledAnims = shuffleArray(ENTRANCE_ANIMATIONS);
+
     images.forEach((imgData, index) => {
         const item = document.createElement('div');
-        item.className = 'gallery-item';
+        item.className = 'gallery-item gallery-item-hidden';
+        item.style.animationDelay = `${index * 120}ms`;
         item.innerHTML = `
             <div class="gallery-item-image-wrapper">
                 <img src="data:image/png;base64,${imgData.image}" 
@@ -681,6 +710,20 @@ function displayGallery(images) {
             </div>
         `;
         genResultGallery.appendChild(item);
+
+        // Pick a random animation (cycling through shuffled list for variety)
+        const animClass = shuffledAnims[index % shuffledAnims.length];
+
+        // Apply the animation after a frame so the hidden state renders first
+        requestAnimationFrame(() => {
+            item.classList.add(animClass);
+        });
+
+        // Clean up animation classes once animation finishes so hover effects work
+        item.addEventListener('animationend', () => {
+            item.classList.remove('gallery-item-hidden', animClass);
+            item.style.animationDelay = '';
+        }, { once: true });
 
         // Add click handler for fullscreen view
         const img = item.querySelector('.gallery-item-image');

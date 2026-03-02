@@ -283,4 +283,24 @@ The UI employs custom CSS animations and `box-shadow` tricks in `styles.css` to 
    - The bar transforms into `dopaminePlasma`, an ultra-vibrant fluid linear-gradient with a blazing white-hot leading edge.
 3. **The Reveal (100% Progress)**:
    - A `setTimeout` injects a massive white `box-shadow` flare spanning the entire header simulating a camera flash.
-   - The new image item injects into the gallery below using the `imageReveal` animation (a cubic-bezier drop-and-scale bounce).
+   - Each new gallery item enters with a **randomized entrance animation** (see below).
+
+### Gallery Entrance Animation System
+
+When images finish generating, each `.gallery-item` is assigned a random entrance animation from a pool of 8. The system lives in two places:
+
+- **`app.js`**: `ENTRANCE_ANIMATIONS` array + `shuffleArray()` helper. Inside `displayGallery()`, the array is Fisher-Yates shuffled per batch so each image gets a unique animation. Items start with `gallery-item-hidden` (opacity: 0), then `requestAnimationFrame` applies the animation class. An `animationend` listener removes animation classes so hover transforms work cleanly. Multi-image batches are staggered with `animationDelay: index * 120ms`.
+
+- **`styles.css`**: 8 `@keyframes` blocks with corresponding `.gallery-anim-*` classes:
+
+| Class | Animation | Description |
+|-------|-----------|-------------|
+| `gallery-anim-cosmic-zoom` | `cosmicZoom` | Scale 0.1→1 with blur clearing and glow burst |
+| `gallery-anim-balloon-pop` | `balloonPop` | Inflates with rubbery overshoot and shape morph |
+| `gallery-anim-slide-left` | `slideFromLeft` | Sweeps from off-screen left with 8° tilt |
+| `gallery-anim-slide-right` | `slideFromRight` | Mirror of slide-left, from right |
+| `gallery-anim-drop-bounce` | `dropBounce` | Falls from above with squash/stretch at landing |
+| `gallery-anim-spiral-in` | `spiralIn` | 360° spin + scale + hue-rotate shift |
+| `gallery-anim-glitch` | `glitchMaterialize` | Clip-path flickers + color shifts (stepped) |
+| `gallery-anim-unfold` | `unfoldReveal` | scaleY 0→1 vertical card reveal |
+
