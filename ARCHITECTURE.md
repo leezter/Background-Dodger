@@ -252,3 +252,35 @@ If `@imgly/background-removal` doesn't meet needs:
 ### Memory errors on large images
 - **Cause**: Browser memory limits
 - **Fix**: Implement image size limits or chunked processing
+
+---
+
+## Image Generation Progress Architecture
+
+The progress bar for image generation and upscaling utilizes a highly stylized "dopamine-triggering" UI driven by a tightly coupled asynchronous polling architecture between the frontend and a thread-managed backend.
+
+### Backend Threading Paradigm
+The image generation endpoints (`/api/generate`, `/api/img2img`, `/api/upscale`) in `server/flux_server.py` are deliberately defined as **synchronous** `def` functions, *not* `async def`.
+- **Reason**: PyTorch pipeline executions (FLUX inference and Real-ESRGAN upscaling) are blocking operations. If they were placed in `async def` endpoints, they would completely block Starlette's `asyncio` event loop.
+- **Solution**: By using standard `def`, FastAPI automatically offloads these endpoints into a separate threadpool. This frees up the main event loop to continuously answer rapid async HTTP polling requests (such as `/api/progress`) while the GPU grinds in the background.
+
+### Backend State Management (`ProgressState`)
+A global singleton instance of `ProgressState` is injected into `flux_server.py` to bridge the gap between the generation thread and the polling endpoint. 
+- It tracks `step`, `total_steps`, `is_running`, and `start_time`.
+- Diffusers models are passed a `callback_on_step_end` lambda that mutates this global state at the end of every inference step.
+
+### Frontend Long-Polling System
+In `app.js`, when generation is triggered, `startProgressPolling()` spins up a `setInterval` loop that hits `/api/progress` every 500ms. It calculates the percentage and manipulates width styles directly on the DOM, completely divorcing UI progress state from the main generation HTTP request `await`.
+
+### UI State Machine
+The UI employs custom CSS animations and `box-shadow` tricks in `styles.css` to trigger excitement (dopamine) during the wait time. It transitions through three distinct phases:
+1. **Initializing Phase (0% Progress)**:
+   - The `.header-progress-fill` DOM element is assigned the `initializing` class.
+   - It displays a `hyperCharge` 3-color pulsating gradient to signify engine ignition.
+   - An SVG `.init-spinner` (custom multi-ring CSS animation) appears next to dynamic "Igniting AI Engine..." text.
+2. **Generating Phase (>0% Progress)**:
+   - The UI flips to the `active` class. The text shifts to "Generating Masterpiece... ⚡".
+   - The bar transforms into `dopaminePlasma`, an ultra-vibrant fluid linear-gradient with a blazing white-hot leading edge.
+3. **The Reveal (100% Progress)**:
+   - A `setTimeout` injects a massive white `box-shadow` flare spanning the entire header simulating a camera flash.
+   - The new image item injects into the gallery below using the `imageReveal` animation (a cubic-bezier drop-and-scale bounce).
