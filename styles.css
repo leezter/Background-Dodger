@@ -837,6 +837,13 @@ body {
     min-height: 80px;
 }
 
+.form-hint {
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.4;
+    margin: 0;
+}
+
 .form-range {
     width: 100%;
     height: 6px;

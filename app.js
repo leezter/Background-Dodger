@@ -1032,12 +1032,16 @@ const videoSourcePreviewContainer = document.getElementById('video-source-previe
 const videoSourcePreview = document.getElementById('video-source-preview');
 const videoSourceClear = document.getElementById('video-source-clear');
 const videoPromptInput = document.getElementById('video-prompt-input');
+const videoQualityPresetSelect = document.getElementById('video-quality-preset-select');
 const videoFramesSelect = document.getElementById('video-frames-select');
 const videoFpsSelect = document.getElementById('video-fps-select');
 const videoStepsInput = document.getElementById('video-steps-input');
 const videoSeedInput = document.getElementById('video-seed-input');
 const videoGuidanceSlider = document.getElementById('video-guidance-slider');
 const videoGuidanceValue = document.getElementById('video-guidance-value');
+const videoImageFitSelect = document.getElementById('video-image-fit-select');
+const videoResolutionSelect = document.getElementById('video-resolution-select');
+const videoNegativePromptInput = document.getElementById('video-negative-prompt-input');
 const videoGenerateBtn = document.getElementById('video-generate-btn');
 const videoGenStatus = document.getElementById('video-gen-status');
 const videoGenStatusText = document.getElementById('video-gen-status-text');
@@ -1050,6 +1054,13 @@ const videoSeedDisplay = document.getElementById('video-seed-display');
 let videoSourceFile = null;
 let generatedVideoData = null;
 let lastVideoSeed = null;
+
+const VIDEO_QUALITY_PRESETS = {
+    fast: { frames: '49', steps: '8', guidance: '1.0' },
+    balanced: { frames: '73', steps: '16', guidance: '1.0' },
+    quality: { frames: '97', steps: '30', guidance: '1.0' },
+    comfy: { frames: '97', steps: '30', guidance: '3.0' },
+};
 
 // =============================================================================
 // Video Generator - Source Image Upload
@@ -1106,6 +1117,27 @@ videoGuidanceSlider.addEventListener('input', () => {
     videoGuidanceValue.textContent = videoGuidanceSlider.value;
 });
 
+if (videoQualityPresetSelect) {
+    videoQualityPresetSelect.addEventListener('change', () => {
+        const preset = VIDEO_QUALITY_PRESETS[videoQualityPresetSelect.value];
+        if (!preset) return;
+
+        videoFramesSelect.value = preset.frames;
+        videoStepsInput.value = preset.steps;
+        videoGuidanceSlider.value = preset.guidance;
+        videoGuidanceValue.textContent = preset.guidance;
+    });
+}
+
+[videoFramesSelect, videoStepsInput, videoGuidanceSlider].forEach(control => {
+    control?.addEventListener('input', () => {
+        if (videoQualityPresetSelect) videoQualityPresetSelect.value = 'custom';
+    });
+    control?.addEventListener('change', () => {
+        if (videoQualityPresetSelect) videoQualityPresetSelect.value = 'custom';
+    });
+});
+
 // =============================================================================
 // Video Generator - Generate Video
 // =============================================================================
@@ -1153,6 +1185,13 @@ async function generateVideo() {
         formData.append('fps', videoFpsSelect.value);
         formData.append('num_inference_steps', videoStepsInput.value || '8');
         formData.append('guidance_scale', videoGuidanceSlider.value);
+        formData.append('quality_preset', videoQualityPresetSelect?.value || 'custom');
+        formData.append('image_fit_mode', videoImageFitSelect?.value || 'blur');
+        formData.append('resolution_preset', videoResolutionSelect?.value || 'auto');
+
+        if (videoNegativePromptInput?.value.trim()) {
+            formData.append('negative_prompt', videoNegativePromptInput.value.trim());
+        }
 
         if (videoSeedInput.value) {
             formData.append('seed', videoSeedInput.value);
@@ -1184,7 +1223,12 @@ async function generateVideo() {
         const videoUrl = URL.createObjectURL(blob);
 
         videoResultPlayer.src = videoUrl;
-        videoSeedDisplay.textContent = `Seed: ${result.seed}`;
+        const videoMeta = [
+            `Seed: ${result.seed}`,
+            result.width && result.height ? `${result.width} x ${result.height}` : null,
+            result.num_frames && result.fps ? `${result.num_frames} frames @ ${result.fps} FPS` : null,
+        ].filter(Boolean).join(' | ');
+        videoSeedDisplay.textContent = videoMeta;
 
         // Show result, hide placeholder
         const placeholder = document.getElementById('video-result-placeholder');

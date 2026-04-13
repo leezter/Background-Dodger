@@ -539,20 +539,34 @@
                                         title="Describe the specific animation or movement you want to see happen to the source image. Be clear about the direction, style, and dynamics of the motion.">Prompt</label>
                                     <textarea id="video-prompt-input" class="form-textarea" rows="3"
                                         placeholder="Describe how you want the image to animate..."></textarea>
+                                    <p class="form-hint">Use a detailed prompt that locks the subject, camera, scene,
+                                        and allowed motion.</p>
                                 </div>
 
                                 <!-- Advanced Settings (collapsible) -->
                                 <details class="advanced-settings">
                                     <summary class="advanced-summary">Advanced Settings</summary>
                                     <div class="advanced-content">
+                                        <div class="form-group">
+                                            <label class="form-label"
+                                                title="Quickly switch between faster tests and higher quality settings. Custom keeps the manual values below.">Quality
+                                                Preset</label>
+                                            <select id="video-quality-preset-select" class="form-select">
+                                                <option value="custom" selected>Custom</option>
+                                                <option value="fast">Fast test (49 frames, 8 steps)</option>
+                                                <option value="balanced">Balanced (73 frames, 16 steps)</option>
+                                                <option value="quality">Quality (97 frames, 30 steps)</option>
+                                                <option value="comfy">Comfy-style test (97 frames, 30 steps, guidance 3)</option>
+                                            </select>
+                                        </div>
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label class="form-label"
                                                     title="Set the total number of frames in the generated video. More frames produce a longer animation but will take significantly more processing time.">Frames</label>
                                                 <select id="video-frames-select" class="form-select">
-                                                    <option value="49">49 (fast)</option>
+                                                    <option value="49" selected>49 (less drift)</option>
                                                     <option value="73">73</option>
-                                                    <option value="97" selected>97 (default)</option>
+                                                    <option value="97">97 (quality)</option>
                                                     <option value="121">121</option>
                                                     <option value="161">161 (slow)</option>
                                                 </select>
@@ -589,6 +603,36 @@
                                                 <input type="range" id="video-guidance-slider" class="form-range"
                                                     min="1" max="6" step="0.1" value="1.0">
                                             </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Controls how the uploaded image is fitted into the LTX generation size. Crop can be more stable; blur preserves the full image; pad avoids adding blurred content.">Image
+                                                    Framing</label>
+                                                <select id="video-image-fit-select" class="form-select">
+                                                    <option value="blur" selected>Preserve full image + blur fill</option>
+                                                    <option value="crop">Center crop</option>
+                                                    <option value="pad">Neutral pad</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Choose the image size sent into LTX. Auto follows the source orientation; 768x512 matches the referenced ComfyUI workflow.">Resolution</label>
+                                                <select id="video-resolution-select" class="form-select">
+                                                    <option value="auto" selected>Auto orientation</option>
+                                                    <option value="landscape_768x512">Landscape 768 x 512</option>
+                                                    <option value="wide_832x480">Wide 832 x 480</option>
+                                                    <option value="diffusers_704x480">Diffusers 704 x 480</option>
+                                                    <option value="portrait_512x768">Portrait 512 x 768</option>
+                                                    <option value="square_640x640">Square 640 x 640</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label"
+                                                title="Things to avoid in the generated video. Add terms here when you see a recurring failure mode like face drift, warping, or new objects appearing.">Negative
+                                                Prompt</label>
+                                            <textarea id="video-negative-prompt-input" class="form-textarea" rows="4">worst quality, low quality, deformed, distorted, disfigured, morphing, identity shift, face changing, body changing, object warping, inconsistent motion, motion smear, motion artifacts, blurry, jittery, fused fingers, bad anatomy, weird hands, extra limbs, new objects appearing, scene change</textarea>
                                         </div>
                                     </div>
                                 </details>

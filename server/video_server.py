@@ -52,18 +52,30 @@ LTX_MODEL = {
     "text_encoder_repo_id": "Lightricks/LTX-Video-0.9.5",
     "name": "LTX-Video 2B Distilled",
     "description": "Image-to-Video generation (2B Distilled, optimized for 12GB VRAM)",
-    "default_num_frames": 97,  # ~4 seconds at 24fps
+    "default_num_frames": 49,  # Shorter clips drift/morph less on I2V.
     "fps": 24,
     "default_steps": 8,  # Distilled model requires only 8 steps
     "max_steps": 30,  # Higher values are available for A/B testing, but are slower
     "default_guidance": 1.0,  # Distilled model uses guidance_scale=1.0
     "max_guidance": 6.0,
-    "landscape_size": (832, 480),
-    "portrait_size": (480, 832),
+    "landscape_size": (768, 512),
+    "wide_size": (832, 480),
+    "diffusers_size": (704, 480),
+    "portrait_size": (512, 768),
     "square_size": (640, 640),
     "decode_timestep": 0.05,
     "decode_noise_scale": 0.025,
-    "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+    "negative_prompt": (
+        "worst quality, low quality, deformed, distorted, disfigured, morphing, identity shift, face changing, "
+        "body changing, object warping, inconsistent motion, motion smear, motion artifacts, blurry, jittery, "
+        "fused fingers, bad anatomy, weird hands, extra limbs, new objects appearing, scene change"
+    ),
+    "quality_presets": {
+        "fast": {"num_frames": 49, "num_inference_steps": 8, "guidance_scale": 1.0},
+        "balanced": {"num_frames": 73, "num_inference_steps": 16, "guidance_scale": 1.0},
+        "quality": {"num_frames": 97, "num_inference_steps": 30, "guidance_scale": 1.0},
+        "comfy": {"num_frames": 97, "num_inference_steps": 30, "guidance_scale": 3.0},
+    },
 }
 
 # =============================================================================
@@ -172,8 +184,18 @@ def normalize_ltx_frame_count(num_frames: int) -> int:
     return ((num_frames - 1) // 8) * 8 + 1
 
 
-def choose_ltx_size(width: int, height: int) -> tuple[int, int]:
+def choose_ltx_size(width: int, height: int, resolution_preset: str = "auto") -> tuple[int, int]:
     """Choose a 12GB-friendly target size while preserving the input orientation."""
+    preset_sizes = {
+        "landscape_768x512": LTX_MODEL["landscape_size"],
+        "wide_832x480": LTX_MODEL["wide_size"],
+        "diffusers_704x480": LTX_MODEL["diffusers_size"],
+        "portrait_512x768": LTX_MODEL["portrait_size"],
+        "square_640x640": LTX_MODEL["square_size"],
+    }
+    if resolution_preset in preset_sizes:
+        return preset_sizes[resolution_preset]
+
     aspect_ratio = width / height
     if aspect_ratio > 1.15:
         return LTX_MODEL["landscape_size"]
@@ -182,10 +204,14 @@ def choose_ltx_size(width: int, height: int) -> tuple[int, int]:
     return LTX_MODEL["square_size"]
 
 
-def prepare_image_for_ltx(input_image: Image.Image) -> Image.Image:
+def prepare_image_for_ltx(
+    input_image: Image.Image,
+    image_fit_mode: str = "blur",
+    resolution_preset: str = "auto",
+) -> Image.Image:
     """Resize for LTX without cutting off the source image content."""
     original_width, original_height = input_image.size
-    target_width, target_height = choose_ltx_size(original_width, original_height)
+    target_width, target_height = choose_ltx_size(original_width, original_height, resolution_preset)
     target_size = (target_width, target_height)
 
     original_ratio = original_width / original_height
@@ -193,6 +219,23 @@ def prepare_image_for_ltx(input_image: Image.Image) -> Image.Image:
 
     if abs(original_ratio - target_ratio) < 0.02:
         return input_image.resize(target_size, Image.LANCZOS)
+
+    if image_fit_mode == "crop":
+        return ImageOps.fit(
+            input_image,
+            target_size,
+            method=Image.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+
+    if image_fit_mode == "pad":
+        background = Image.new("RGB", target_size, (16, 16, 16))
+        foreground = input_image.copy()
+        foreground.thumbnail(target_size, Image.LANCZOS)
+        left = (target_width - foreground.size[0]) // 2
+        top = (target_height - foreground.size[1]) // 2
+        background.paste(foreground, (left, top))
+        return background
 
     background = ImageOps.fit(
         input_image,
@@ -207,6 +250,23 @@ def prepare_image_for_ltx(input_image: Image.Image) -> Image.Image:
     top = (target_height - foreground.size[1]) // 2
     background.paste(foreground, (left, top))
     return background
+
+
+def apply_quality_preset(
+    quality_preset: str,
+    num_frames: int,
+    num_inference_steps: int,
+    guidance_scale: float,
+) -> tuple[int, int, float]:
+    preset = LTX_MODEL["quality_presets"].get(quality_preset)
+    if not preset:
+        return num_frames, num_inference_steps, guidance_scale
+
+    return (
+        preset["num_frames"],
+        preset["num_inference_steps"],
+        preset["guidance_scale"],
+    )
 
 def export_to_video(frames, fps: int = 8) -> bytes:
     """Export PIL Image frames to MP4 video bytes."""
@@ -304,11 +364,15 @@ async def health_check():
 def generate_video(
     image: UploadFile = File(...),
     prompt: str = Form(...),
-    num_frames: int = Form(97),
+    num_frames: int = Form(49),
     fps: int = Form(24),
     num_inference_steps: int = Form(8),
     guidance_scale: float = Form(1.0),
-    seed: Optional[int] = Form(None)
+    seed: Optional[int] = Form(None),
+    quality_preset: str = Form("custom"),
+    negative_prompt: Optional[str] = Form(None),
+    image_fit_mode: str = Form("blur"),
+    resolution_preset: str = Form("auto"),
 ):
     """Generate a video from an image and text prompt using LTX-Video 2B Distilled."""
     
@@ -324,22 +388,41 @@ def generate_video(
         image_data = image.file.read()
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
         width, height = input_image.size
-        input_image = prepare_image_for_ltx(input_image)
+        image_fit_mode = image_fit_mode if image_fit_mode in {"blur", "crop", "pad"} else "blur"
+        resolution_preset = resolution_preset if resolution_preset in {
+            "auto",
+            "landscape_768x512",
+            "wide_832x480",
+            "diffusers_704x480",
+            "portrait_512x768",
+            "square_640x640",
+        } else "auto"
+
+        input_image = prepare_image_for_ltx(input_image, image_fit_mode, resolution_preset)
         prepared_width, prepared_height = input_image.size
 
         logger.info(
-            "Prepared input image: original %sx%s -> LTX %sx%s",
+            "Prepared input image: original %sx%s -> LTX %sx%s (%s, %s)",
             width,
             height,
             prepared_width,
             prepared_height,
+            image_fit_mode,
+            resolution_preset,
         )
         
         # Clamp parameters for distilled model
+        num_frames, num_inference_steps, guidance_scale = apply_quality_preset(
+            quality_preset,
+            num_frames,
+            num_inference_steps,
+            guidance_scale,
+        )
         num_frames = normalize_ltx_frame_count(num_frames)
         num_inference_steps = max(4, min(num_inference_steps, LTX_MODEL["max_steps"]))
         fps = _clamp_int(fps, 1, 30)
         guidance_scale = max(1.0, min(guidance_scale, LTX_MODEL["max_guidance"]))
+        negative_prompt = (negative_prompt or LTX_MODEL["negative_prompt"]).strip() or LTX_MODEL["negative_prompt"]
         
         if guidance_scale > 2.0:
             logger.warning(
@@ -359,7 +442,7 @@ def generate_video(
             result = video_state.pipeline(
                 image=input_image,
                 prompt=prompt,
-                negative_prompt=LTX_MODEL["negative_prompt"],
+                negative_prompt=negative_prompt,
                 num_frames=num_frames,
                 frame_rate=fps,
                 num_inference_steps=num_inference_steps,
