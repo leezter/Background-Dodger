@@ -1,6 +1,6 @@
 # Background-Dodger
 
-A multi-purpose AI toolkit: **Background Remover** (browser-based), **FLUX.2 Image Generator** (local GPU), **CogVideoX Video Generator** (local GPU), and **Image Upscaler** (local GPU). All processing happens locally — your data never leaves your device.
+A multi-purpose AI toolkit: **Background Remover** (browser-based), **FLUX.2 Image Generator** (local GPU), **LTX-Video Generator** (local GPU), and **Image Upscaler** (local GPU). All processing happens locally — your data never leaves your device.
 
 ## Quick Start
 
@@ -26,7 +26,7 @@ python flux_server.py
 ```
 Then open [http://localhost:8080](http://localhost:8080) and click the ⚡ icon (Generator) or 🔍 icon (Upscaler) in the sidebar.
 
-### With CogVideoX Video Generator (requires NVIDIA GPU)
+### With LTX-Video Generator (requires NVIDIA GPU)
 ```bash
 # Terminal 1: Frontend
 npx http-server . -p 8080
@@ -62,11 +62,11 @@ Then open [http://localhost:8080](http://localhost:8080) and click the 🎬 icon
 - **Local Processing**: Runs on the same GPU server as FLUX.2
 - **Fallback**: Automatically uses tiled processing if VRAM is limited
 
-### CogVideoX Video Generator
+### LTX-Video Generator
 - **Image-to-Video**: Animate still images with text prompts
-- **Local GPU**: Runs on your NVIDIA GPU with INT8 quantization
-- **Multiple Resolutions**: Supports square (480x480), landscape (720x480), portrait (480x720)
-- **Configurable**: Adjust frames (17-49), FPS (4-16), steps, and guidance
+- **Local GPU**: Runs on your NVIDIA GPU with CPU offload and VAE tiling/slicing
+- **Multiple Orientations**: Uses 12GB-friendly landscape, portrait, and square LTX resolutions
+- **Configurable**: Adjust frames (49-161), FPS (12-24), steps, and guidance
 - **MP4 Export**: Downloads as standard MP4 video
 
 ## Project Structure
@@ -80,7 +80,7 @@ BackgroundRemover/
 ├── sw.js               # Service worker for offline support
 ├── server/
 │   ├── flux_server.py  # FastAPI backend for FLUX.2
-│   ├── video_server.py # FastAPI backend for CogVideoX
+│   ├── video_server.py # FastAPI backend for LTX-Video
 │   └── requirements.txt
 ├── ARCHITECTURE.md     # Detailed technical docs for AI assistants
 └── README.md           # This file
@@ -94,7 +94,7 @@ BackgroundRemover/
 | Background Removal | [@imgly/background-removal](https://github.com/imgly/background-removal-js) v1.5.1 |
 | Image Generation | [FLUX.2 Klein 4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) |
 | Image Upscaling | [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) |
-| Video Generation | [CogVideoX-5b-I2V](https://huggingface.co/THUDM/CogVideoX-5b-I2V) |
+| Video Generation | [LTX-Video 2B Distilled](https://huggingface.co/Lightricks/LTX-Video) |
 | Backend | FastAPI, PyTorch, Diffusers, TorchAO |
 | Fonts | [Inter](https://fonts.google.com/specimen/Inter) via Google Fonts |
 
@@ -110,14 +110,14 @@ BackgroundRemover/
 ### Video Generator
 | GPU | VRAM | Model | Notes |
 |-----|------|-------|-------|
-| RTX 4070+ | 12-16GB | CogVideoX-5b-I2V | With INT8 quantization |
-| RTX 4090 | 24GB | CogVideoX-5b-I2V | Full precision |
+| RTX 4070+ | 12-16GB | LTX-Video 2B Distilled | With CPU offload |
+| RTX 4090 | 24GB | LTX-Video 2B Distilled / larger LTX variants | More headroom |
 
 ## Usage Notes
 
 - **First Load**: Downloads ~30MB AI model for background remover (cached)
 - **First FLUX Run**: Downloads ~16GB model (cached in HuggingFace cache)
-- **First CogVideoX Run**: Downloads ~10GB model (cached in HuggingFace cache)
+- **First LTX-Video Run**: Downloads the 2B distilled checkpoint and text encoder (cached in HuggingFace cache)
 - **Supported Formats**: PNG, JPG, JPEG, WebP
 - **Output Format**: PNG (images), MP4 (video)
 - **Offline**: All features work offline after initial model downloads

@@ -550,21 +550,20 @@
                                                 <label class="form-label"
                                                     title="Set the total number of frames in the generated video. More frames produce a longer animation but will take significantly more processing time.">Frames</label>
                                                 <select id="video-frames-select" class="form-select">
-                                                    <option value="17">17</option>
-                                                    <option value="25">25</option>
-                                                    <option value="33">33</option>
-                                                    <option value="41">41</option>
-                                                    <option value="49" selected>49</option>
+                                                    <option value="49">49 (fast)</option>
+                                                    <option value="73">73</option>
+                                                    <option value="97" selected>97 (default)</option>
+                                                    <option value="121">121</option>
+                                                    <option value="161">161 (slow)</option>
                                                 </select>
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label"
                                                     title="Frames Per Second (FPS). Determines how smoothly and quickly the generated video plays back. Higher FPS means smoother but faster movement over the generated frames.">FPS</label>
                                                 <select id="video-fps-select" class="form-select">
-                                                    <option value="4">4 (slower)</option>
-                                                    <option value="8" selected>8 (default)</option>
-                                                    <option value="12">12 (faster)</option>
-                                                    <option value="16">16 (fast)</option>
+                                                    <option value="12">12 (slower)</option>
+                                                    <option value="16">16</option>
+                                                    <option value="24" selected>24 (default)</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -573,7 +572,7 @@
                                                 <label class="form-label"
                                                     title="Number of denoising steps used per frame. More steps improve the quality and consistency of the animation but proportionally increase the total rendering time.">Steps</label>
                                                 <input type="number" id="video-steps-input" class="form-input"
-                                                    placeholder="50" min="10" max="100" value="50">
+                                                    placeholder="8" min="4" max="30" value="8">
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label"
@@ -586,9 +585,9 @@
                                             <div class="form-group" style="flex: 1;">
                                                 <label class="form-label"
                                                     title="Controls how strongly the video output is adjusted to match the text prompt. Higher values force the animation to strictly follow your instructions, but may sacrifice visual smoothness or realism.">Guidance:
-                                                    <span id="video-guidance-value">6.0</span></label>
+                                                    <span id="video-guidance-value">1.0</span></label>
                                                 <input type="range" id="video-guidance-slider" class="form-range"
-                                                    min="1" max="15" step="0.5" value="6.0">
+                                                    min="1" max="6" step="0.1" value="1.0">
                                             </div>
                                         </div>
                                     </div>
@@ -622,7 +621,7 @@
                                     <span class="title-icon">🎬</span>
                                     Video Generator
                                 </h1>
-                                <p class="subtitle">AI-powered image-to-video using CogVideoX-5b-I2V on your local GPU
+                                <p class="subtitle">AI-powered image-to-video using LTX-Video 2B Distilled on your local GPU
                                 </p>
                             </header>
 
@@ -658,7 +657,7 @@
                     </section>
 
                     <footer class="footer">
-                        <p>🎬 Powered by CogVideoX — running locally on your GPU</p>
+                        <p>🎬 Powered by LTX-Video — running locally on your GPU</p>
                     </footer>
                 </main>
             </div>

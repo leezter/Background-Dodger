@@ -1128,7 +1128,7 @@ async function generateVideo() {
     // Show loading state
     videoGenerateBtn.disabled = true;
     videoGenStatus.classList.remove('hidden');
-    videoGenStatusText.textContent = 'Connecting to CogVideoX server...';
+    videoGenStatusText.textContent = 'Connecting to LTX-Video server...';
 
     try {
         // Check if server is available
@@ -1140,7 +1140,7 @@ async function generateVideo() {
 
         const healthData = await healthCheck.json();
         if (!healthData.model_loaded) {
-            videoGenStatusText.textContent = 'Loading CogVideoX model (this may take 1-2 minutes on first run)...';
+            videoGenStatusText.textContent = 'Loading LTX-Video model (this may take a few minutes on first run)...';
         } else {
             videoGenStatusText.textContent = 'Generating video (this may take 2-5 minutes)...';
         }
@@ -1151,7 +1151,7 @@ async function generateVideo() {
         formData.append('prompt', prompt);
         formData.append('num_frames', videoFramesSelect.value);
         formData.append('fps', videoFpsSelect.value);
-        formData.append('num_inference_steps', videoStepsInput.value || '50');
+        formData.append('num_inference_steps', videoStepsInput.value || '8');
         formData.append('guidance_scale', videoGuidanceSlider.value);
 
         if (videoSeedInput.value) {
@@ -1219,7 +1219,7 @@ videoDownloadBtn.addEventListener('click', () => {
     // Download
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `cogvideo_generation_${lastVideoSeed || Date.now()}.mp4`;
+    link.download = `ltx_video_generation_${lastVideoSeed || Date.now()}.mp4`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

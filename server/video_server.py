@@ -20,7 +20,7 @@ from typing import Optional
 from contextlib import asynccontextmanager
 
 import torch
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -49,13 +49,21 @@ video_state = VideoModelState()
 LTX_MODEL = {
     "repo_id": "Lightricks/LTX-Video",
     "ckpt_path": "ltxv-2b-0.9.8-distilled.safetensors",
+    "text_encoder_repo_id": "Lightricks/LTX-Video-0.9.5",
     "name": "LTX-Video 2B Distilled",
-    "description": "Image-to-Video generation (2B Distilled, 8 steps)",
+    "description": "Image-to-Video generation (2B Distilled, optimized for 12GB VRAM)",
     "default_num_frames": 97,  # ~4 seconds at 24fps
     "fps": 24,
     "default_steps": 8,  # Distilled model requires only 8 steps
-    "max_steps": 20,  # Distilled model doesn't benefit from many steps
-    "default_guidance": 1.0  # Distilled model uses guidance_scale=1.0
+    "max_steps": 30,  # Higher values are available for A/B testing, but are slower
+    "default_guidance": 1.0,  # Distilled model uses guidance_scale=1.0
+    "max_guidance": 6.0,
+    "landscape_size": (832, 480),
+    "portrait_size": (480, 832),
+    "square_size": (640, 640),
+    "decode_timestep": 0.05,
+    "decode_noise_scale": 0.025,
+    "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
 }
 
 # =============================================================================
@@ -74,11 +82,12 @@ def load_video_model():
     try:
         import gc
         from diffusers import LTXImageToVideoPipeline
-        from transformers import T5EncoderModel, T5Tokenizer
+        from transformers import T5EncoderModel, T5TokenizerFast
         from huggingface_hub import hf_hub_download
         
         repo_id = LTX_MODEL["repo_id"]
         ckpt_path = LTX_MODEL["ckpt_path"]
+        text_encoder_repo_id = LTX_MODEL["text_encoder_repo_id"]
         
         # Download the checkpoint file first
         logger.info(f"Downloading LTX-Video checkpoint from {repo_id}/{ckpt_path}...")
@@ -91,17 +100,15 @@ def load_video_model():
         logger.info(f"Checkpoint downloaded to: {local_path}")
         
         # Load T5 text encoder with memory-efficient loading
-        # Use device_map="auto" to load directly to GPU and avoid RAM spike
         logger.info("Loading T5 text encoder (memory-efficient mode)...")
         text_encoder = T5EncoderModel.from_pretrained(
-            "Lightricks/LTX-Video-0.9.5",
+            text_encoder_repo_id,
             subfolder="text_encoder",
             torch_dtype=video_state.dtype,
-            device_map="auto",  # Load directly to GPU
             low_cpu_mem_usage=True,  # Minimize RAM usage during loading
         )
-        tokenizer = T5Tokenizer.from_pretrained(
-            "Lightricks/LTX-Video-0.9.5",
+        tokenizer = T5TokenizerFast.from_pretrained(
+            text_encoder_repo_id,
             subfolder="tokenizer",
         )
         logger.info("T5 text encoder loaded")
@@ -116,8 +123,13 @@ def load_video_model():
             torch_dtype=video_state.dtype,
         )
         
-        # Move to GPU
-        video_state.pipeline.to(video_state.device)
+        # Keep VRAM headroom on 12GB GPUs. This is slower than moving the whole
+        # pipeline to CUDA, but quality is unchanged and OOM risk is much lower.
+        if video_state.device == "cuda":
+            video_state.pipeline.enable_model_cpu_offload()
+            logger.info("Model CPU offload enabled")
+        else:
+            video_state.pipeline.to(video_state.device)
         
         # Enable VAE tiling and slicing for memory efficiency
         if hasattr(video_state.pipeline, 'vae') and video_state.pipeline.vae is not None:
@@ -143,10 +155,58 @@ class VideoGenerateResponse(BaseModel):
     seed: Optional[int] = None
     num_frames: Optional[int] = None
     fps: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
 
 # =============================================================================
-# Video Export Utility
+# Video Utilities
 # =============================================================================
+
+def _clamp_int(value: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(value, maximum))
+
+
+def normalize_ltx_frame_count(num_frames: int) -> int:
+    """LTX works best with frame counts of 8n + 1."""
+    num_frames = _clamp_int(num_frames, 9, 161)
+    return ((num_frames - 1) // 8) * 8 + 1
+
+
+def choose_ltx_size(width: int, height: int) -> tuple[int, int]:
+    """Choose a 12GB-friendly target size while preserving the input orientation."""
+    aspect_ratio = width / height
+    if aspect_ratio > 1.15:
+        return LTX_MODEL["landscape_size"]
+    if aspect_ratio < 0.87:
+        return LTX_MODEL["portrait_size"]
+    return LTX_MODEL["square_size"]
+
+
+def prepare_image_for_ltx(input_image: Image.Image) -> Image.Image:
+    """Resize for LTX without cutting off the source image content."""
+    original_width, original_height = input_image.size
+    target_width, target_height = choose_ltx_size(original_width, original_height)
+    target_size = (target_width, target_height)
+
+    original_ratio = original_width / original_height
+    target_ratio = target_width / target_height
+
+    if abs(original_ratio - target_ratio) < 0.02:
+        return input_image.resize(target_size, Image.LANCZOS)
+
+    background = ImageOps.fit(
+        input_image,
+        target_size,
+        method=Image.LANCZOS,
+        centering=(0.5, 0.5),
+    ).filter(ImageFilter.GaussianBlur(radius=24))
+
+    foreground = input_image.copy()
+    foreground.thumbnail(target_size, Image.LANCZOS)
+    left = (target_width - foreground.size[0]) // 2
+    top = (target_height - foreground.size[1]) // 2
+    background.paste(foreground, (left, top))
+    return background
 
 def export_to_video(frames, fps: int = 8) -> bytes:
     """Export PIL Image frames to MP4 video bytes."""
@@ -159,7 +219,7 @@ def export_to_video(frames, fps: int = 8) -> bytes:
     try:
         # Convert frames to numpy arrays
         import numpy as np
-        frame_arrays = [np.array(frame) for frame in frames]
+        frame_arrays = [np.array(frame.convert("RGB")) for frame in frames]
         
         # Write video
         writer = imageio.get_writer(tmp_path, fps=fps, codec='libx264', quality=8)
@@ -231,11 +291,17 @@ async def health_check():
         "cuda_available": torch.cuda.is_available(),
         "model_loaded": video_state.model_loaded,
         "device": video_state.device,
-        "model": LTX_MODEL["name"] if video_state.model_loaded else None
+        "model": LTX_MODEL["name"] if video_state.model_loaded else None,
+        "defaults": {
+            "num_frames": LTX_MODEL["default_num_frames"],
+            "fps": LTX_MODEL["fps"],
+            "num_inference_steps": LTX_MODEL["default_steps"],
+            "guidance_scale": LTX_MODEL["default_guidance"],
+        },
     }
 
 @app.post("/api/video/generate", response_model=VideoGenerateResponse)
-async def generate_video(
+def generate_video(
     image: UploadFile = File(...),
     prompt: str = Form(...),
     num_frames: int = Form(97),
@@ -255,76 +321,56 @@ async def generate_video(
     
     try:
         # Load the input image
-        image_data = await image.read()
+        image_data = image.file.read()
         input_image = Image.open(io.BytesIO(image_data)).convert("RGB")
-        
-        # LTX-Video works best with resolutions divisible by 32, e.g., 768x512, 1024x576
-        # We will target a reasonable default like 768x512 for VRAM usage, or keep native if possible
-        # Default target: 768x512 (landscape) or 512x768 (portrait) based on input aspect ratio
-        
         width, height = input_image.size
-        
-        # Simple logic: resizing to nearest multiple of 32
-        # Target 512px on the shortest side roughly?
-        # LTX usually generates 768x512
-        
-        target_width = 768
-        target_height = 512
-        
-        # Adjust for portrait if needed
-        if height > width:
-            target_width, target_height = 512, 768
-            
-        # Resize to fill
-        ratio = max(target_width / width, target_height / height)
-        new_width = int(width * ratio)
-        new_height = int(height * ratio)
-        input_image = input_image.resize((new_width, new_height), Image.LANCZOS)
-        
-        # Center crop
-        left = (new_width - target_width) // 2
-        top = (new_height - target_height) // 2
-        right = left + target_width
-        bottom = top + target_height
-        input_image = input_image.crop((left, top, right, bottom))
-        
-        # Ensure dimensions are divisible by 32
-        w, h = input_image.size
-        w = w - (w % 32)
-        h = h - (h % 32)
-        if w != input_image.size[0] or h != input_image.size[1]:
-            input_image = input_image.resize((w, h), Image.LANCZOS)
-            
-        logger.info(f"Prepared input image: {input_image.size[0]}x{input_image.size[1]}")
+        input_image = prepare_image_for_ltx(input_image)
+        prepared_width, prepared_height = input_image.size
+
+        logger.info(
+            "Prepared input image: original %sx%s -> LTX %sx%s",
+            width,
+            height,
+            prepared_width,
+            prepared_height,
+        )
         
         # Clamp parameters for distilled model
-        num_frames = max(9, min(num_frames, 161))  # Cap at 161 for 12GB VRAM
+        num_frames = normalize_ltx_frame_count(num_frames)
         num_inference_steps = max(4, min(num_inference_steps, LTX_MODEL["max_steps"]))
+        fps = _clamp_int(fps, 1, 30)
+        guidance_scale = max(1.0, min(guidance_scale, LTX_MODEL["max_guidance"]))
         
-        # Dev model works best with guidance_scale around 3.0
-        if guidance_scale < 2.0:
-            logger.warning(f"Dev model works best with guidance_scale~3.0, got {guidance_scale}")
+        if guidance_scale > 2.0:
+            logger.warning(
+                "LTX 2B distilled is tuned for guidance_scale=1.0; high CFG may reduce visual quality. got=%s",
+                guidance_scale,
+            )
         
         # Set seed
         if seed is None:
             seed = torch.randint(0, 2**32, (1,)).item()
-        generator = torch.Generator(device="cuda").manual_seed(seed)
+        generator = torch.Generator(device=video_state.device).manual_seed(seed)
         
         logger.info(f"Generating video: prompt='{prompt[:50]}...', frames={num_frames}, steps={num_inference_steps}, seed={seed}")
         
         # Generate video with LTX-Video 2B Distilled parameters
-        result = video_state.pipeline(
-            image=input_image,
-            prompt=prompt,
-            negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
-            num_frames=num_frames,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            generator=generator,
-            height=input_image.size[1],
-            width=input_image.size[0],
-            output_type="pil",
-        )
+        with torch.inference_mode():
+            result = video_state.pipeline(
+                image=input_image,
+                prompt=prompt,
+                negative_prompt=LTX_MODEL["negative_prompt"],
+                num_frames=num_frames,
+                frame_rate=fps,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                generator=generator,
+                height=prepared_height,
+                width=prepared_width,
+                decode_timestep=LTX_MODEL["decode_timestep"],
+                decode_noise_scale=LTX_MODEL["decode_noise_scale"],
+                output_type="pil",
+            )
         
         # Get frames from result  
         # LTX-Video returns frames directly as a list of PIL Images
@@ -333,8 +379,7 @@ async def generate_video(
         else:
             frames = result[0]  # Tuple return format
         
-        # Export to MP4 with user-specified FPS
-        fps = max(1, min(fps, 30))  # Clamp to reasonable range
+        # Export to MP4 with the same FPS used for temporal conditioning.
         video_bytes = export_to_video(frames, fps=fps)
         video_base64 = base64.b64encode(video_bytes).decode("utf-8")
         
@@ -345,7 +390,9 @@ async def generate_video(
             video=video_base64,
             seed=seed,
             num_frames=len(frames),
-            fps=fps
+            fps=fps,
+            width=prepared_width,
+            height=prepared_height,
         )
         
     except Exception as e:
