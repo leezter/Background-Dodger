@@ -4,8 +4,8 @@ LTX-Video Generation Server (2B Distilled)
 A FastAPI server for local Lightricks LTX-Video generation using the 2B distilled model.
 
 Model: Lightricks/LTX-Video (2B Distilled)
-- Storage: ~6.3 GB download
-- VRAM: ~8-10GB with optimizations
+- Storage: ~6.3 GB checkpoint download, plus shared text encoder cache
+- VRAM: 12GB target with CPU offload
 - Output: Variable frames at 24fps
 - Steps: 8 (distilled model optimized for fast generation)
 - Compatible with 12GB VRAM + 32GB RAM
@@ -45,7 +45,7 @@ class VideoModelState:
 video_state = VideoModelState()
 
 # Model configuration - LTX-Video 2B Distilled
-# Optimized model that fits comfortably in 12GB VRAM + 32GB RAM
+# Restored fast model that fits comfortably in 12GB VRAM + 32GB RAM.
 LTX_MODEL = {
     "repo_id": "Lightricks/LTX-Video",
     "ckpt_path": "ltxv-2b-0.9.8-distilled.safetensors",
@@ -54,17 +54,26 @@ LTX_MODEL = {
     "description": "Image-to-Video generation (2B Distilled, optimized for 12GB VRAM)",
     "default_num_frames": 49,  # Shorter clips drift/morph less on I2V.
     "fps": 24,
-    "default_steps": 8,  # Distilled model requires only 8 steps
-    "max_steps": 30,  # Higher values are available for A/B testing, but are slower
-    "default_guidance": 1.0,  # Distilled model uses guidance_scale=1.0
+    "default_steps": 8,  # Distilled model requires only 8 steps for fast generation.
+    "max_steps": 30,
+    "default_guidance": 1.0,
     "max_guidance": 6.0,
     "landscape_size": (768, 512),
     "wide_size": (832, 480),
     "diffusers_size": (704, 480),
     "portrait_size": (512, 768),
     "square_size": (640, 640),
+    "preview_landscape_size": (512, 352),
+    "preview_medium_landscape_size": (576, 384),
+    "preview_wide_size": (640, 384),
+    "preview_portrait_size": (352, 512),
+    "preview_medium_portrait_size": (384, 576),
+    "preview_square_size": (512, 512),
     "decode_timestep": 0.05,
     "decode_noise_scale": 0.025,
+    "guidance_rescale": 0.0,
+    "max_sequence_length": 128,
+    "export_quality": 9,
     "negative_prompt": (
         "worst quality, low quality, deformed, distorted, disfigured, morphing, identity shift, face changing, "
         "body changing, object warping, inconsistent motion, motion smear, motion artifacts, blurry, jittery, "
@@ -103,7 +112,7 @@ def load_video_model():
         
         # Download the checkpoint file first
         logger.info(f"Downloading LTX-Video checkpoint from {repo_id}/{ckpt_path}...")
-        logger.info("First run will download ~6.3GB model + ~9.4GB T5 text encoder")
+        logger.info("First run will download ~6.3GB checkpoint + shared T5 text encoder cache")
         
         local_path = hf_hub_download(
             repo_id=repo_id,
@@ -192,11 +201,26 @@ def choose_ltx_size(width: int, height: int, resolution_preset: str = "auto") ->
         "diffusers_704x480": LTX_MODEL["diffusers_size"],
         "portrait_512x768": LTX_MODEL["portrait_size"],
         "square_640x640": LTX_MODEL["square_size"],
+        "preview_landscape_512x352": LTX_MODEL["preview_landscape_size"],
+        "preview_landscape_576x384": LTX_MODEL["preview_medium_landscape_size"],
+        "preview_wide_640x384": LTX_MODEL["preview_wide_size"],
+        "preview_portrait_352x512": LTX_MODEL["preview_portrait_size"],
+        "preview_portrait_384x576": LTX_MODEL["preview_medium_portrait_size"],
+        "preview_square_512x512": LTX_MODEL["preview_square_size"],
     }
     if resolution_preset in preset_sizes:
         return preset_sizes[resolution_preset]
 
     aspect_ratio = width / height
+    if resolution_preset == "auto_preview":
+        if aspect_ratio > 1.45:
+            return LTX_MODEL["preview_wide_size"]
+        if aspect_ratio > 1.15:
+            return LTX_MODEL["preview_medium_landscape_size"]
+        if aspect_ratio < 0.87:
+            return LTX_MODEL["preview_medium_portrait_size"]
+        return LTX_MODEL["preview_square_size"]
+
     if aspect_ratio > 1.15:
         return LTX_MODEL["landscape_size"]
     if aspect_ratio < 0.87:
@@ -268,7 +292,7 @@ def apply_quality_preset(
         preset["guidance_scale"],
     )
 
-def export_to_video(frames, fps: int = 8) -> bytes:
+def export_to_video(frames, fps: int = 8, quality: int = 8) -> bytes:
     """Export PIL Image frames to MP4 video bytes."""
     import imageio
     
@@ -282,7 +306,7 @@ def export_to_video(frames, fps: int = 8) -> bytes:
         frame_arrays = [np.array(frame.convert("RGB")) for frame in frames]
         
         # Write video
-        writer = imageio.get_writer(tmp_path, fps=fps, codec='libx264', quality=8)
+        writer = imageio.get_writer(tmp_path, fps=fps, codec='libx264', quality=quality)
         for frame in frame_arrays:
             writer.append_data(frame)
         writer.close()
@@ -357,6 +381,11 @@ async def health_check():
             "fps": LTX_MODEL["fps"],
             "num_inference_steps": LTX_MODEL["default_steps"],
             "guidance_scale": LTX_MODEL["default_guidance"],
+            "guidance_rescale": LTX_MODEL["guidance_rescale"],
+            "decode_timestep": LTX_MODEL["decode_timestep"],
+            "decode_noise_scale": LTX_MODEL["decode_noise_scale"],
+            "max_sequence_length": LTX_MODEL["max_sequence_length"],
+            "export_quality": LTX_MODEL["export_quality"],
         },
     }
 
@@ -373,6 +402,11 @@ def generate_video(
     negative_prompt: Optional[str] = Form(None),
     image_fit_mode: str = Form("blur"),
     resolution_preset: str = Form("auto"),
+    guidance_rescale: float = Form(0.0),
+    decode_timestep: float = Form(0.05),
+    decode_noise_scale: float = Form(0.025),
+    max_sequence_length: int = Form(128),
+    export_quality: int = Form(9),
 ):
     """Generate a video from an image and text prompt using LTX-Video 2B Distilled."""
     
@@ -391,11 +425,18 @@ def generate_video(
         image_fit_mode = image_fit_mode if image_fit_mode in {"blur", "crop", "pad"} else "blur"
         resolution_preset = resolution_preset if resolution_preset in {
             "auto",
+            "auto_preview",
             "landscape_768x512",
             "wide_832x480",
             "diffusers_704x480",
             "portrait_512x768",
             "square_640x640",
+            "preview_landscape_512x352",
+            "preview_landscape_576x384",
+            "preview_wide_640x384",
+            "preview_portrait_352x512",
+            "preview_portrait_384x576",
+            "preview_square_512x512",
         } else "auto"
 
         input_image = prepare_image_for_ltx(input_image, image_fit_mode, resolution_preset)
@@ -411,7 +452,7 @@ def generate_video(
             resolution_preset,
         )
         
-        # Clamp parameters for distilled model
+        # Clamp parameters for the distilled model
         num_frames, num_inference_steps, guidance_scale = apply_quality_preset(
             quality_preset,
             num_frames,
@@ -422,6 +463,11 @@ def generate_video(
         num_inference_steps = max(4, min(num_inference_steps, LTX_MODEL["max_steps"]))
         fps = _clamp_int(fps, 1, 30)
         guidance_scale = max(1.0, min(guidance_scale, LTX_MODEL["max_guidance"]))
+        guidance_rescale = max(0.0, min(guidance_rescale, 1.0))
+        decode_timestep = max(0.0, min(decode_timestep, 0.2))
+        decode_noise_scale = max(0.0, min(decode_noise_scale, 0.2))
+        max_sequence_length = _clamp_int(max_sequence_length, 64, 256)
+        export_quality = _clamp_int(export_quality, 5, 10)
         negative_prompt = (negative_prompt or LTX_MODEL["negative_prompt"]).strip() or LTX_MODEL["negative_prompt"]
         
         if guidance_scale > 2.0:
@@ -436,7 +482,7 @@ def generate_video(
         generator = torch.Generator(device=video_state.device).manual_seed(seed)
         
         logger.info(f"Generating video: prompt='{prompt[:50]}...', frames={num_frames}, steps={num_inference_steps}, seed={seed}")
-        
+
         # Generate video with LTX-Video 2B Distilled parameters
         with torch.inference_mode():
             result = video_state.pipeline(
@@ -447,12 +493,14 @@ def generate_video(
                 frame_rate=fps,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
+                guidance_rescale=guidance_rescale,
                 generator=generator,
                 height=prepared_height,
                 width=prepared_width,
-                decode_timestep=LTX_MODEL["decode_timestep"],
-                decode_noise_scale=LTX_MODEL["decode_noise_scale"],
+                decode_timestep=decode_timestep,
+                decode_noise_scale=decode_noise_scale,
                 output_type="pil",
+                max_sequence_length=max_sequence_length,
             )
         
         # Get frames from result  
@@ -463,7 +511,7 @@ def generate_video(
             frames = result[0]  # Tuple return format
         
         # Export to MP4 with the same FPS used for temporal conditioning.
-        video_bytes = export_to_video(frames, fps=fps)
+        video_bytes = export_to_video(frames, fps=fps, quality=export_quality)
         video_base64 = base64.b64encode(video_bytes).decode("utf-8")
         
         logger.info(f"Video generated successfully: {len(frames)} frames, {len(video_bytes)} bytes")

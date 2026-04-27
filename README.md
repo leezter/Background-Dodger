@@ -66,6 +66,7 @@ Then open [http://localhost:8080](http://localhost:8080) and click the 🎬 icon
 - **Image-to-Video**: Animate still images with text prompts
 - **Local GPU**: Runs on your NVIDIA GPU with CPU offload and VAE tiling/slicing
 - **Multiple Orientations**: Uses 12GB-friendly landscape, portrait, and square LTX resolutions
+- **Preview Resolutions**: Smaller preview presets for faster motion tests before a final render
 - **Configurable**: Adjust frames (49-161), FPS (12-24), steps, and guidance
 - **MP4 Export**: Downloads as standard MP4 video
 

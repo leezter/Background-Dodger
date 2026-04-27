@@ -607,6 +607,50 @@
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label class="form-label"
+                                                    title="Allows longer prompts to influence the video. Higher values can help detailed prompts but may use slightly more memory.">Prompt
+                                                    Tokens</label>
+                                                <select id="video-max-sequence-length-select" class="form-select">
+                                                    <option value="128" selected>128 (default)</option>
+                                                    <option value="192">192</option>
+                                                    <option value="256">256 (long prompts)</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Controls MP4 compression quality after generation. Higher values preserve more detail but produce larger files.">MP4
+                                                    Quality</label>
+                                                <input type="number" id="video-export-quality-input" class="form-input"
+                                                    placeholder="9" min="5" max="10" value="9">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Advanced LTX decode setting. Small changes may affect sharpness and stability; 0.05 is the model default used here.">Decode
+                                                    Timestep</label>
+                                                <input type="number" id="video-decode-timestep-input" class="form-input"
+                                                    placeholder="0.05" min="0" max="0.2" step="0.005" value="0.05">
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Advanced LTX decode setting. Lower can be cleaner; higher can add texture but may add artifacts.">Decode
+                                                    Noise</label>
+                                                <input type="number" id="video-decode-noise-scale-input" class="form-input"
+                                                    placeholder="0.025" min="0" max="0.2" step="0.005" value="0.025">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group" style="flex: 1;">
+                                                <label class="form-label"
+                                                    title="Advanced guidance cleanup setting. Try 0.3-0.7 if high guidance creates harsh contrast or artifacts; keep 0.0 for default LTX behavior.">Guidance
+                                                    Rescale</label>
+                                                <input type="number" id="video-guidance-rescale-input" class="form-input"
+                                                    placeholder="0.0" min="0" max="1" step="0.05" value="0">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label class="form-label"
                                                     title="Controls how the uploaded image is fitted into the LTX generation size. Crop can be more stable; blur preserves the full image; pad avoids adding blurred content.">Image
                                                     Framing</label>
                                                 <select id="video-image-fit-select" class="form-select">
@@ -620,6 +664,13 @@
                                                     title="Choose the image size sent into LTX. Auto follows the source orientation; 768x512 matches the referenced ComfyUI workflow.">Resolution</label>
                                                 <select id="video-resolution-select" class="form-select">
                                                     <option value="auto" selected>Auto orientation</option>
+                                                    <option value="auto_preview">Auto preview</option>
+                                                    <option value="preview_landscape_512x352">Preview landscape 512 x 352</option>
+                                                    <option value="preview_landscape_576x384">Preview landscape 576 x 384</option>
+                                                    <option value="preview_wide_640x384">Preview wide 640 x 384</option>
+                                                    <option value="preview_portrait_352x512">Preview portrait 352 x 512</option>
+                                                    <option value="preview_portrait_384x576">Preview portrait 384 x 576</option>
+                                                    <option value="preview_square_512x512">Preview square 512 x 512</option>
                                                     <option value="landscape_768x512">Landscape 768 x 512</option>
                                                     <option value="wide_832x480">Wide 832 x 480</option>
                                                     <option value="diffusers_704x480">Diffusers 704 x 480</option>

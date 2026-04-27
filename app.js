@@ -1042,6 +1042,11 @@ const videoGuidanceValue = document.getElementById('video-guidance-value');
 const videoImageFitSelect = document.getElementById('video-image-fit-select');
 const videoResolutionSelect = document.getElementById('video-resolution-select');
 const videoNegativePromptInput = document.getElementById('video-negative-prompt-input');
+const videoMaxSequenceLengthSelect = document.getElementById('video-max-sequence-length-select');
+const videoExportQualityInput = document.getElementById('video-export-quality-input');
+const videoDecodeTimestepInput = document.getElementById('video-decode-timestep-input');
+const videoDecodeNoiseScaleInput = document.getElementById('video-decode-noise-scale-input');
+const videoGuidanceRescaleInput = document.getElementById('video-guidance-rescale-input');
 const videoGenerateBtn = document.getElementById('video-generate-btn');
 const videoGenStatus = document.getElementById('video-gen-status');
 const videoGenStatusText = document.getElementById('video-gen-status-text');
@@ -1172,7 +1177,7 @@ async function generateVideo() {
 
         const healthData = await healthCheck.json();
         if (!healthData.model_loaded) {
-            videoGenStatusText.textContent = 'Loading LTX-Video model (this may take a few minutes on first run)...';
+            videoGenStatusText.textContent = 'Loading LTX-Video 2B model (this may take a few minutes on first run)...';
         } else {
             videoGenStatusText.textContent = 'Generating video (this may take 2-5 minutes)...';
         }
@@ -1188,6 +1193,11 @@ async function generateVideo() {
         formData.append('quality_preset', videoQualityPresetSelect?.value || 'custom');
         formData.append('image_fit_mode', videoImageFitSelect?.value || 'blur');
         formData.append('resolution_preset', videoResolutionSelect?.value || 'auto');
+        formData.append('max_sequence_length', videoMaxSequenceLengthSelect?.value || '128');
+        formData.append('export_quality', videoExportQualityInput?.value || '9');
+        formData.append('decode_timestep', videoDecodeTimestepInput?.value || '0.05');
+        formData.append('decode_noise_scale', videoDecodeNoiseScaleInput?.value || '0.025');
+        formData.append('guidance_rescale', videoGuidanceRescaleInput?.value || '0');
 
         if (videoNegativePromptInput?.value.trim()) {
             formData.append('negative_prompt', videoNegativePromptInput.value.trim());
