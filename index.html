@@ -11,6 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#6366f1">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -194,32 +195,33 @@
                                 <!-- Mode Toggle -->
                                 <div class="mode-toggle">
                                     <button class="mode-btn active" data-mode="text2img"
-                                        title="Generate an image entirely from your text description.">Text to
+                                        title="Create a new image from only your prompt. Use this when you do not need to preserve an existing photo, layout, or subject. Works with all FLUX.2 models.">Text to
                                         Image</button>
                                     <button class="mode-btn" data-mode="img2img"
-                                        title="Use a source image along with your text description to guide the output.">Image
+                                        title="Use up to four role-labeled reference images plus your prompt. References can guide the main scene, character identity, pose, product, style, color, texture, or background. Works with FLUX.2 models, but the Strength slider is currently not applied by the backend.">Image
                                         to Image</button>
                                 </div>
 
                                 <!-- Model Selection -->
                                 <div class="form-group">
                                     <label class="form-label"
-                                        title="Select the underlying AI model. Larger models (e.g. 9B, Dev) produce higher quality but are slower and use more memory. Smaller models (e.g. 4B) are faster.">Model</label>
+                                        title="Choose which FLUX.2 model is loaded for text-to-image and image-to-image. Klein 4B is fastest, FP8 uses the least VRAM, Klein 9B improves quality, and Dev gives the highest quality but needs H100-class memory. Changing this loads a different model on the local server.">Model</label>
                                     <select id="model-select" class="form-select">
-                                        <option value="klein-4b">FLUX.2 Klein 4B (Fast, ~13GB VRAM)</option>
-                                        <option value="klein-4b-fp8">FLUX.2 Klein 4B FP8 (Faster, ~8GB VRAM)</option>
-                                        <option value="klein-9b">FLUX.2 Klein 9B (Quality, ~20GB VRAM)</option>
-                                        <option value="dev">FLUX.2 Dev 32B (Best, H100 required)</option>
+                                        <option value="klein-4b" title="Fast general-purpose FLUX.2 model. Good for quick drafts and everyday images. Uses about 13GB VRAM. Maximum 8 steps.">FLUX.2 Klein 4B (Fast, ~13GB VRAM)</option>
+                                        <option value="klein-4b-fp8" title="FP8-derived FLUX.2 Klein 4B transformer loaded through a Diffusers-compatible converted checkpoint. The original BFL FP8 repo is a single-file checkpoint, so the app combines the converted transformer with the normal Klein 4B pipeline components. Maximum 8 steps.">FLUX.2 Klein 4B FP8 (Converted, ~8GB VRAM)</option>
+                                        <option value="klein-9b" title="Larger Klein model for better detail and prompt understanding. Requires approved Hugging Face access and backend authentication. Slower and uses about 20GB VRAM. Maximum 8 steps.">FLUX.2 Klein 9B (Gated, ~20GB VRAM)</option>
+                                        <option value="dev" title="Largest FLUX.2 model in this app. Requires approved Hugging Face access, backend authentication, and H100-class GPU memory. Supports up to 50 steps and usually prefers higher guidance than Klein.">FLUX.2 Dev 32B (Gated, H100 required)</option>
                                     </select>
+                                    <p id="model-compat-note" class="form-hint compatibility-note"></p>
                                 </div>
 
                                 <!-- LoRA Selection -->
                                 <div class="form-group">
                                     <div class="form-label-row">
                                         <label class="form-label"
-                                            title="Apply a Low-Rank Adaptation (LoRA) to stylisticly alter the generated image with a specific artistic style, concept, or subject focus.">LoRA
+                                            title="Optional style or subject add-on loaded from the local server's LoRA folder. Use it when you want a specific look, character, product, or concept. Works in text-to-image and image-to-image with all FLUX.2 models if the selected LoRA is compatible with FLUX.2.">LoRA
                                             Style</label>
-                                        <button id="refresh-loras-btn" class="icon-btn" title="Refresh LoRA list">
+                                        <button id="refresh-loras-btn" class="icon-btn" title="Reload the list of .safetensors LoRA files from the local server folder. Use this after adding or removing LoRA files.">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                                 stroke-linecap="round" stroke-linejoin="round">
@@ -239,113 +241,328 @@
                                 <!-- LoRA Scale Slider (Hidden by default) -->
                                 <div id="lora-scale-container" class="form-group hidden">
                                     <label class="form-label"
-                                        title="Adjust the intensity of the applied LoRA style. A higher value makes the style more prominent but might distort the image, while a lower value applies it subtly.">LoRA
+                                        title="Controls how strongly the selected LoRA changes the result. Only works when a LoRA Style is selected. Lower values are subtle, 1.0 is normal, and high values can force the style but may distort faces, hands, text, or composition.">LoRA
                                         Scale: <span id="lora-scale-value">1.0</span></label>
                                     <input type="range" id="lora-scale-slider" class="form-range" min="0" max="2.0"
                                         step="0.1" value="1.0">
                                 </div>
 
-                                <!-- Image Upload for img2img (hidden by default) -->
+                                <!-- Multi-reference upload for img2img (hidden by default) -->
                                 <div id="img2img-upload" class="form-group hidden">
                                     <label class="form-label"
-                                        title="Upload the original image(s) to be transformed. The generation process will modify this base image guided by your prompt.">Source
+                                        title="Add up to four separate reference images for Image to Image mode. Give each image a role so the model knows whether to preserve the main scene, character identity, pose, product, style, color, or texture. Works with FLUX.2 Klein models.">Reference
                                         Images</label>
-
-                                    <!-- Image 1 -->
-                                    <div class="img2img-source-container">
-                                        <div id="img2img-drop-zone" class="drop-zone drop-zone-small">
-                                            <div class="drop-zone-content">
-                                                <div class="upload-icon-small">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"
-                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                        stroke-width="1.5" stroke-linecap="round"
-                                                        stroke-linejoin="round">
-                                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                                        <polyline points="17 8 12 3 7 8" />
-                                                        <line x1="12" y1="3" x2="12" y2="15" />
-                                                    </svg>
-                                                </div>
-                                                <p class="drop-zone-text-small">Image 1</p>
+                                    <div class="reference-grid" id="reference-grid">
+                                        <div class="reference-slot" data-ref-slot="0">
+                                            <div class="reference-slot-header">
+                                                <span class="reference-slot-index">1</span>
+                                                <select id="reference-role-0" class="reference-role-select"
+                                                    title="Primary image controls the starting subject, scene, and output size. Use this for the image you most want to preserve.">
+                                                    <option value="primary" selected>Primary image</option>
+                                                    <option value="character">Character identity</option>
+                                                    <option value="pose">Pose / layout</option>
+                                                    <option value="style">Style reference</option>
+                                                    <option value="product">Product / object</option>
+                                                    <option value="color">Color palette</option>
+                                                    <option value="texture">Texture / material</option>
+                                                    <option value="background">Background / scene</option>
+                                                </select>
                                             </div>
-                                            <input type="file" id="img2img-file-input"
-                                                accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                            <div id="reference-drop-0" class="drop-zone drop-zone-small reference-drop">
+                                                <div class="drop-zone-content">
+                                                    <div class="upload-icon-small">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                            stroke-width="1.5" stroke-linecap="round"
+                                                            stroke-linejoin="round">
+                                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                            <polyline points="17 8 12 3 7 8" />
+                                                            <line x1="12" y1="3" x2="12" y2="15" />
+                                                        </svg>
+                                                    </div>
+                                                    <p class="drop-zone-text-small">Drop or browse</p>
+                                                </div>
+                                                <input type="file" id="reference-file-0"
+                                                    accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                            </div>
+                                            <div id="reference-preview-container-0" class="img2img-preview reference-preview hidden">
+                                                <img id="reference-preview-0" class="img2img-preview-image" alt="Reference image 1">
+                                                <button id="reference-download-0" class="img2img-download-btn" title="Download reference image">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                        <polyline points="7 10 12 15 17 10" />
+                                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                                    </svg>
+                                                </button>
+                                                <button id="reference-clear-0" class="img2img-clear-btn" title="Clear reference image">×</button>
+                                            </div>
                                         </div>
-                                        <div id="img2img-preview-container" class="img2img-preview hidden">
-                                            <img id="img2img-preview" class="img2img-preview-image" alt="Source image">
-                                            <button id="img2img-download" class="img2img-download-btn"
-                                                title="Download image">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                                    <polyline points="7 10 12 15 17 10" />
-                                                    <line x1="12" y1="15" x2="12" y2="3" />
-                                                </svg>
-                                            </button>
-                                            <button id="img2img-clear" class="img2img-clear-btn"
-                                                title="Clear image">×</button>
+
+                                        <div class="reference-slot" data-ref-slot="1">
+                                            <div class="reference-slot-header">
+                                                <span class="reference-slot-index">2</span>
+                                                <select id="reference-role-1" class="reference-role-select"
+                                                    title="Choose what this optional reference should influence. Character identity is useful for keeping the same person across generations.">
+                                                    <option value="character" selected>Character identity</option>
+                                                    <option value="pose">Pose / layout</option>
+                                                    <option value="style">Style reference</option>
+                                                    <option value="product">Product / object</option>
+                                                    <option value="color">Color palette</option>
+                                                    <option value="texture">Texture / material</option>
+                                                    <option value="background">Background / scene</option>
+                                                    <option value="primary">Primary image</option>
+                                                </select>
+                                            </div>
+                                            <div id="reference-drop-1" class="drop-zone drop-zone-small reference-drop">
+                                                <div class="drop-zone-content">
+                                                    <div class="upload-icon-small">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                            stroke-width="1.5" stroke-linecap="round"
+                                                            stroke-linejoin="round">
+                                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                                            <circle cx="8.5" cy="8.5" r="1.5" />
+                                                            <polyline points="21 15 16 10 5 21" />
+                                                        </svg>
+                                                    </div>
+                                                    <p class="drop-zone-text-small">Optional</p>
+                                                </div>
+                                                <input type="file" id="reference-file-1"
+                                                    accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                            </div>
+                                            <div id="reference-preview-container-1" class="img2img-preview reference-preview hidden">
+                                                <img id="reference-preview-1" class="img2img-preview-image" alt="Reference image 2">
+                                                <button id="reference-download-1" class="img2img-download-btn" title="Download reference image">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                        <polyline points="7 10 12 15 17 10" />
+                                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                                    </svg>
+                                                </button>
+                                                <button id="reference-clear-1" class="img2img-clear-btn" title="Clear reference image">×</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="reference-slot" data-ref-slot="2">
+                                            <div class="reference-slot-header">
+                                                <span class="reference-slot-index">3</span>
+                                                <select id="reference-role-2" class="reference-role-select"
+                                                    title="Choose what this optional reference should influence. Pose and layout are useful for matching composition without copying identity.">
+                                                    <option value="pose" selected>Pose / layout</option>
+                                                    <option value="character">Character identity</option>
+                                                    <option value="style">Style reference</option>
+                                                    <option value="product">Product / object</option>
+                                                    <option value="color">Color palette</option>
+                                                    <option value="texture">Texture / material</option>
+                                                    <option value="background">Background / scene</option>
+                                                    <option value="primary">Primary image</option>
+                                                </select>
+                                            </div>
+                                            <div id="reference-drop-2" class="drop-zone drop-zone-small reference-drop">
+                                                <div class="drop-zone-content">
+                                                    <div class="upload-icon-small">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                            stroke-width="1.5" stroke-linecap="round"
+                                                            stroke-linejoin="round">
+                                                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                                                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                                                        </svg>
+                                                    </div>
+                                                    <p class="drop-zone-text-small">Optional</p>
+                                                </div>
+                                                <input type="file" id="reference-file-2"
+                                                    accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                            </div>
+                                            <div id="reference-preview-container-2" class="img2img-preview reference-preview hidden">
+                                                <img id="reference-preview-2" class="img2img-preview-image" alt="Reference image 3">
+                                                <button id="reference-download-2" class="img2img-download-btn" title="Download reference image">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                        <polyline points="7 10 12 15 17 10" />
+                                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                                    </svg>
+                                                </button>
+                                                <button id="reference-clear-2" class="img2img-clear-btn" title="Clear reference image">×</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="reference-slot" data-ref-slot="3">
+                                            <div class="reference-slot-header">
+                                                <span class="reference-slot-index">4</span>
+                                                <select id="reference-role-3" class="reference-role-select"
+                                                    title="Choose what this optional reference should influence. Style, product, color, texture, and background references are useful for controlled edits.">
+                                                    <option value="style" selected>Style reference</option>
+                                                    <option value="product">Product / object</option>
+                                                    <option value="color">Color palette</option>
+                                                    <option value="texture">Texture / material</option>
+                                                    <option value="background">Background / scene</option>
+                                                    <option value="character">Character identity</option>
+                                                    <option value="pose">Pose / layout</option>
+                                                    <option value="primary">Primary image</option>
+                                                </select>
+                                            </div>
+                                            <div id="reference-drop-3" class="drop-zone drop-zone-small reference-drop">
+                                                <div class="drop-zone-content">
+                                                    <div class="upload-icon-small">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                                            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                            stroke-width="1.5" stroke-linecap="round"
+                                                            stroke-linejoin="round">
+                                                            <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                                                            <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                                                            <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                                                            <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                                                            <path d="M12 2C6.5 2 2 5.6 2 10c0 3.3 2.7 6.2 6.5 7.4.9.3 1.5 1.2 1.5 2.1 0 1.1.9 2 2 2 5.5 0 10-4.5 10-10S17.5 2 12 2z" />
+                                                        </svg>
+                                                    </div>
+                                                    <p class="drop-zone-text-small">Optional</p>
+                                                </div>
+                                                <input type="file" id="reference-file-3"
+                                                    accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                            </div>
+                                            <div id="reference-preview-container-3" class="img2img-preview reference-preview hidden">
+                                                <img id="reference-preview-3" class="img2img-preview-image" alt="Reference image 4">
+                                                <button id="reference-download-3" class="img2img-download-btn" title="Download reference image">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                        <polyline points="7 10 12 15 17 10" />
+                                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                                    </svg>
+                                                </button>
+                                                <button id="reference-clear-3" class="img2img-clear-btn" title="Clear reference image">×</button>
+                                            </div>
                                         </div>
                                     </div>
+                                    <p class="form-hint">Add at least one reference for Image to Image. Role labels guide the prompt and choose the primary canvas, but they are not hard model controls; use clear prompt wording for strict identity or pose separation.</p>
 
-                                    <!-- Image 2 (Optional) -->
-                                    <div class="img2img-source-container mt-2">
-                                        <div id="img2img-drop-zone-2" class="drop-zone drop-zone-small">
-                                            <div class="drop-zone-content">
-                                                <div class="upload-icon-small">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"
-                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                        stroke-width="1.5" stroke-linecap="round"
-                                                        stroke-linejoin="round">
-                                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                                        <circle cx="8.5" cy="8.5" r="1.5" />
-                                                        <polyline points="21 15 16 10 5 21" />
-                                                    </svg>
-                                                </div>
-                                                <p class="drop-zone-text-small">Image 2 (Optional)</p>
+                                    <details id="character-profile-panel" class="character-profile-panel">
+                                        <summary class="advanced-summary">Character Profiles</summary>
+                                        <div class="character-profile-content">
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Save a set of reference images as a reusable character profile. Profiles are stored locally in this browser and are not sent anywhere except during generation.">Saved
+                                                    Profile</label>
+                                                <select id="character-profile-select" class="form-select">
+                                                    <option value="">No saved profiles</option>
+                                                </select>
                                             </div>
-                                            <input type="file" id="img2img-file-input-2"
-                                                accept="image/png, image/jpeg, image/jpg, image/webp" hidden>
+                                            <div class="character-profile-actions">
+                                                <button id="load-character-profile-btn" class="btn btn-secondary btn-small" type="button"
+                                                    title="Load the selected character profile into the reference slots.">Load</button>
+                                                <button id="delete-character-profile-btn" class="btn btn-secondary btn-small" type="button"
+                                                    title="Delete the selected local character profile.">Delete</button>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Name for saving the current reference images as a reusable character profile.">Save
+                                                    Current References</label>
+                                                <input id="character-profile-name-input" class="form-input" type="text"
+                                                    placeholder="Character name">
+                                            </div>
+                                            <button id="save-character-profile-btn" class="btn btn-primary btn-small" type="button"
+                                                title="Save active reference slots and their roles as a local character profile.">Save Profile</button>
+                                            <div class="form-group">
+                                                <label class="form-label"
+                                                    title="Adds local prompt instructions for common consistent-character workflows. These instructions appear in the Prompt Composer and can be edited before generation.">Consistency
+                                                    Intent</label>
+                                                <select id="character-intent-select" class="form-select">
+                                                    <option value="off" selected>Off</option>
+                                                    <option value="preserve_identity">Preserve same character</option>
+                                                    <option value="new_outfit">Same character, new outfit</option>
+                                                    <option value="new_pose">Same character, new pose</option>
+                                                    <option value="new_scene">Same character, new scene</option>
+                                                    <option value="character_sheet">Character sheet</option>
+                                                </select>
+                                            </div>
+                                            <p id="character-profile-status" class="form-hint">Profiles are saved locally in this browser.</p>
                                         </div>
-                                        <div id="img2img-preview-container-2" class="img2img-preview hidden">
-                                            <img id="img2img-preview-2" class="img2img-preview-image"
-                                                alt="Source image 2">
-                                            <button id="img2img-download-2" class="img2img-download-btn"
-                                                title="Download image">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
-                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                                    <polyline points="7 10 12 15 17 10" />
-                                                    <line x1="12" y1="15" x2="12" y2="3" />
-                                                </svg>
-                                            </button>
-                                            <button id="img2img-clear-2" class="img2img-clear-btn"
-                                                title="Clear image">×</button>
+                                    </details>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="form-label"
+                                                title="Controls the working size sent into FLUX.2 for Image to Image. Balanced caps the longest side at 1024px, which is much faster with multiple references than using large source images directly.">Reference
+                                                Size</label>
+                                            <select id="reference-resolution-select" class="form-select">
+                                                <option value="balanced_1024" selected>Balanced 1024 max</option>
+                                                <option value="preview_768">Preview 768 max</option>
+                                                <option value="quality_1280">Quality 1280 max</option>
+                                                <option value="source">Source size, max 1280</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="form-label"
+                                                title="Choose whether the saved/generated result stays at the model working size or is resized back to the primary reference image dimensions. Matching source size can be slower and does not add true detail if the model worked at a smaller size.">Output
+                                                Size</label>
+                                            <select id="output-resolution-select" class="form-select">
+                                                <option value="generated" selected>Model size (fast)</option>
+                                                <option value="source">Match primary source</option>
+                                            </select>
                                         </div>
                                     </div>
 
                                     <!-- Strength slider for img2img -->
                                     <div class="form-group-inline mt-3">
                                         <label class="form-label"
-                                            title="Determine how much the generated image can deviate from the source image. Lower values keep the result closer to the original, while higher values allow for more drastic changes.">Strength:
+                                            title="Intended to control how much the output may change from the source image. Important: this value is currently sent to the server but the FLUX.2 image-to-image backend does not apply it, so changing it will not affect results until backend support is added.">Strength:
                                             <span id="strength-value">0.75</span></label>
                                         <input type="range" id="strength-slider" class="form-range" min="0.1" max="1.0"
                                             step="0.05" value="0.75">
+                                        <p class="form-hint compatibility-note warning">Strength is not applied by the current FLUX.2 backend. Use your prompt and source image choice to control how much the result changes.</p>
                                     </div>
                                 </div>
 
                                 <!-- Prompt Input -->
                                 <div class="form-group">
                                     <label class="form-label"
-                                        title="Enter a detailed text description of what you want the AI to create. Be specific about subjects, style, lighting, and composition for optimal results.">Prompt</label>
+                                        title="Describe the image you want. Include the main subject, setting, style, camera angle, lighting, colors, and anything that must be included or avoided. Works with all models and both generation modes.">Prompt</label>
                                     <textarea id="prompt-input" class="form-textarea" rows="3"
                                         placeholder="Describe the image you want to generate..."></textarea>
                                 </div>
 
+                                <details id="prompt-composer" class="prompt-composer hidden">
+                                    <summary class="advanced-summary">Prompt Composer</summary>
+                                    <div class="prompt-composer-content">
+                                        <div class="form-group">
+                                            <label class="form-label"
+                                                title="Choose what text is sent to FLUX.2. The composed prompt is generated locally from your prompt and the selected reference roles.">Prompt
+                                                Mode</label>
+                                            <select id="prompt-mode-select" class="form-select">
+                                                <option value="composed" selected>Use composed prompt</option>
+                                                <option value="roles">Add role instructions</option>
+                                                <option value="original">Use my prompt only</option>
+                                            </select>
+                                        </div>
+                                        <div class="prompt-role-summary" id="prompt-role-summary"></div>
+                                        <div class="form-group">
+                                            <label class="form-label"
+                                                title="This is the exact prompt the app will send when Prompt Mode is set to Use composed prompt. You can edit it directly before generating.">Composed
+                                                Prompt</label>
+                                            <textarea id="composed-prompt-input" class="form-textarea composed-prompt-textarea" rows="8"
+                                                placeholder="Add reference images and write a prompt to compose a role-aware prompt..."></textarea>
+                                        </div>
+                                        <div class="prompt-composer-actions">
+                                            <button id="refresh-composed-prompt-btn" class="btn btn-secondary btn-small" type="button"
+                                                title="Rebuild the composed prompt from your current prompt and selected reference roles.">Refresh</button>
+                                            <button id="copy-composed-prompt-btn" class="btn btn-secondary btn-small" type="button"
+                                                title="Copy the composed prompt text to the main prompt box for manual editing.">Copy to Prompt</button>
+                                        </div>
+                                    </div>
+                                </details>
+
                                 <!-- Number of Images Slider -->
                                 <div class="form-group">
                                     <label class="form-label"
-                                        title="Choose the total number of images you want the AI to generate in a single run. Generating more images takes proportionally longer.">Images
+                                        title="Choose how many variations to make from the same prompt and settings. Works with all FLUX.2 models and both modes. More images take longer; each image uses the seed plus its image number, so results differ slightly.">Images
                                         to Generate: <span id="num-images-value">1</span></label>
                                     <input type="range" id="num-images-slider" class="form-range" min="1" max="6"
                                         step="1" value="1">
@@ -362,7 +579,7 @@
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label class="form-label"
-                                                    title="Set the width of the generated image in pixels. Larger dimensions increase detail but require more generation time and VRAM.">Width</label>
+                                                    title="Text to Image only: choose the output width in pixels. Larger sizes can add detail but need more VRAM and time. In Image to Image mode, the server uses the uploaded image size instead, rounded to a compatible FLUX.2 size.">Width</label>
                                                 <select id="width-select" class="form-select">
                                                     <option value="512">512</option>
                                                     <option value="768">768</option>
@@ -372,7 +589,7 @@
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label"
-                                                    title="Set the height of the generated image in pixels. Larger dimensions increase detail but require more generation time and VRAM.">Height</label>
+                                                    title="Text to Image only: choose the output height in pixels. Larger sizes can add detail but need more VRAM and time. In Image to Image mode, the server uses the uploaded image size instead, rounded to a compatible FLUX.2 size.">Height</label>
                                                 <select id="height-select" class="form-select">
                                                     <option value="512">512</option>
                                                     <option value="768">768</option>
@@ -384,20 +601,20 @@
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label class="form-label"
-                                                    title="Number of denoising steps the AI takes to generate the image. More steps generally result in higher quality, but increase generation time.">Steps</label>
+                                                    title="Controls how many refinement passes the model runs. Leave Auto for the model default. Klein 4B, Klein 4B FP8, and Klein 9B are capped at 8 steps and usually work best around 4. FLUX.2 Dev supports up to 50 and defaults to 28. Higher values take longer.">Steps</label>
                                                 <input type="number" id="steps-input" class="form-input"
                                                     placeholder="Auto" min="1" max="50">
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label"
-                                                    title="A specific number to initialize the generation. Using the exact same seed and settings will reproduce the identical image. Leave blank for a random result.">Seed</label>
+                                                    title="Optional number that starts the random process. Use the same seed, prompt, model, and settings to repeat a similar result. Leave blank for a new random seed. When generating several images, the app uses this seed and then increments it for each variation.">Seed</label>
                                                 <input type="number" id="seed-input" class="form-input"
                                                     placeholder="Random">
                                             </div>
                                         </div>
                                         <div class="form-group">
                                             <label class="form-label"
-                                                title="Control how closely the AI follows your text prompt. Distilled FLUX models (Klein) work best with low guidance (~1.0). Higher values force stricter adherence but may cause over-saturation or artifacts.">Guidance
+                                                title="Controls how strongly the model follows the prompt. Klein models are distilled and usually work best near 1.0; high values can add artifacts or harsh colors. FLUX.2 Dev usually benefits from higher guidance, around 3.5. Works in both modes and with all models.">Guidance
                                                 Scale: <span id="guidance-value">1.0</span></label>
                                             <input type="range" id="guidance-slider" class="form-range" min="1" max="10"
                                                 step="0.5" value="1.0">

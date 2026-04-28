@@ -448,6 +448,84 @@ body {
     color: var(--color-text-secondary);
 }
 
+.reference-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-sm);
+}
+
+.reference-slot {
+    min-width: 0;
+    padding: var(--spacing-xs);
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    border-radius: var(--radius-md);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.reference-slot:hover,
+.reference-slot.has-image {
+    border-color: rgba(139, 92, 246, 0.55);
+    box-shadow: 0 10px 30px rgba(139, 92, 246, 0.12);
+}
+
+.reference-slot-header {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: var(--spacing-xs);
+    align-items: center;
+    margin-bottom: var(--spacing-xs);
+}
+
+.reference-slot-index {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(139, 92, 246, 0.16);
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.reference-role-select {
+    min-width: 0;
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-family: inherit;
+    font-size: 0.76rem;
+}
+
+.reference-role-select:focus {
+    outline: none;
+    border-color: var(--color-accent-primary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+
+.reference-drop {
+    min-height: 112px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-sm);
+}
+
+.reference-preview {
+    margin-top: 0;
+}
+
+.reference-preview .img2img-preview-image {
+    height: 112px;
+    max-height: 112px;
+    object-fit: cover;
+}
+
 /* ============================================
    Processing Section
    ============================================ */
@@ -720,9 +798,9 @@ body {
 }
 
 .generator-card {
-    width: 340px;
-    min-width: 340px;
-    max-width: 340px;
+    width: clamp(360px, 30vw, 420px);
+    min-width: 360px;
+    max-width: 420px;
     background: var(--color-bg-card);
     backdrop-filter: blur(20px);
     border-radius: var(--radius-xl);
@@ -844,6 +922,14 @@ body {
     margin: 0;
 }
 
+.compatibility-note {
+    margin-top: var(--spacing-xs);
+}
+
+.compatibility-note.warning {
+    color: #fbbf24;
+}
+
 .form-range {
     width: 100%;
     height: 6px;
@@ -889,6 +975,79 @@ body {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
+}
+
+.prompt-composer {
+    border: 1px solid rgba(139, 92, 246, 0.28);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: rgba(139, 92, 246, 0.045);
+}
+
+.prompt-composer-content {
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.prompt-role-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.prompt-role-pill {
+    max-width: 100%;
+    padding: 5px 8px;
+    border: 1px solid rgba(139, 92, 246, 0.28);
+    border-radius: 999px;
+    background: rgba(139, 92, 246, 0.12);
+    color: var(--color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.composed-prompt-textarea {
+    min-height: 180px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.prompt-composer-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-sm);
+}
+
+.character-profile-panel {
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: rgba(20, 184, 166, 0.045);
+}
+
+.character-profile-content {
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.character-profile-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-sm);
+}
+
+.character-intent-pill {
+    border-color: rgba(20, 184, 166, 0.4);
+    background: rgba(20, 184, 166, 0.13);
+    color: #7dd3fc;
 }
 
 /* Generation Status */
@@ -1702,6 +1861,15 @@ body {
     justify-content: flex-end;
 }
 
+.slot-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.slot-modal-grid #slot-modal-cancel {
+    grid-column: 1 / -1;
+}
+
 /* ============================================
    Video Generator Panel
    ============================================ */
@@ -1766,7 +1934,7 @@ body {
 
     .generator-card {
         width: 100%;
-        min-width: 100%;
+        min-width: 0;
         max-width: 100%;
         max-height: none;
     }
@@ -1835,6 +2003,10 @@ body {
         --sidebar-width: 0px;
     }
 
+    .reference-grid {
+        grid-template-columns: 1fr;
+    }
+
     .sidebar {
         display: none;
     }
@@ -1845,6 +2017,18 @@ body {
 
     .container {
         padding: var(--spacing-sm);
+    }
+
+    #image-gen-panel .container {
+        padding: var(--spacing-sm);
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+
+    #image-gen-panel .generator-card {
+        width: calc(100vw - (var(--spacing-sm) * 2));
+        min-width: 0;
+        max-width: calc(100vw - (var(--spacing-sm) * 2));
     }
 
     .header {

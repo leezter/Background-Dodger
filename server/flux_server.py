@@ -36,6 +36,31 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+def load_local_env():
+    """Load local .env values without overriding existing environment variables."""
+    server_dir = os.path.dirname(__file__)
+    repo_dir = os.path.dirname(server_dir)
+    for env_path in (os.path.join(repo_dir, ".env"), os.path.join(server_dir, ".env")):
+        if not os.path.exists(env_path):
+            continue
+        try:
+            with open(env_path, "r", encoding="utf-8") as env_file:
+                for raw_line in env_file:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip().lstrip("\ufeff")
+                    value = value.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+        except OSError as exc:
+            logger.warning(f"Could not read local env file {env_path}: {exc}")
+
+
+load_local_env()
+
 # =============================================================================
 # Global State
 # =============================================================================
@@ -76,49 +101,59 @@ AVAILABLE_MODELS = {
     "klein-4b": {
         "id": "black-forest-labs/FLUX.2-klein-4B",
         "name": "FLUX.2 Klein 4B",
-        "description": "Fast, Apache 2.0 license, ~13GB VRAM, sub-second on RTX 3090/4070",
+        "description": "Fast general-purpose FLUX.2 model for drafts and everyday images. Uses about 13GB VRAM, works with text-to-image and image-to-image, and is capped at 8 steps.",
         "default_steps": 4,
         "max_steps": 8,
         "pipeline_class": "Flux2KleinPipeline",
         "vram": "~13GB",
         "distilled": True,
         "default_guidance": 1.0,
+        "requires_auth": False,
+        "access_note": "Public model. No Hugging Face login is normally required.",
         # Pinned to the locally-cached revision to avoid re-downloading when HuggingFace updates main.
         # The working snapshot is: 5e67da950fce4a097bc150c22958a05716994cea
         "revision": "5e67da950fce4a097bc150c22958a05716994cea"
     },
     "klein-4b-fp8": {
-        "id": "black-forest-labs/FLUX.2-klein-base-4b-fp8",
+        "id": "black-forest-labs/FLUX.2-klein-4B",
         "name": "FLUX.2 Klein 4B FP8",
-        "description": "Quantized, faster, ~8GB VRAM, Apache 2.0",
+        "description": "FP8-derived FLUX.2 Klein 4B transformer loaded through a Diffusers-compatible converted checkpoint. Use for testing the FP8 weights in this app. Capped at 8 steps.",
         "default_steps": 4,
         "max_steps": 8,
         "pipeline_class": "Flux2KleinPipeline",
         "vram": "~8GB",
         "distilled": True,
-        "default_guidance": 1.0
+        "default_guidance": 1.0,
+        "requires_auth": False,
+        "access_note": "Public model. The original BFL FP8 repo is a single-file checkpoint, so this app loads a Diffusers-compatible converted transformer and the standard Klein 4B pipeline components.",
+        "transformer_id": "Photoroom/FLUX.2-klein-4b-fp8-diffusers",
+        "transformer_subfolder": "transformer_bf16"
     },
     "klein-9b": {
         "id": "black-forest-labs/FLUX.2-klein-9B",
         "name": "FLUX.2 Klein 9B",
-        "description": "Higher quality, non-commercial license",
+        "description": "Higher-quality Klein model with better detail and prompt understanding. Uses about 20GB VRAM, works with current generator controls, and is capped at 8 steps.",
         "default_steps": 4,
         "max_steps": 8,
         "pipeline_class": "Flux2KleinPipeline",
         "vram": "~20GB",
         "distilled": True,
-        "default_guidance": 1.0
+        "default_guidance": 1.0,
+        "requires_auth": True,
+        "access_note": "Gated Hugging Face model. You must accept access on Hugging Face and authenticate the backend before loading it."
     },
     "dev": {
         "id": "black-forest-labs/FLUX.2-dev",
         "name": "FLUX.2 Dev",
-        "description": "32B params, highest quality, requires H100-level GPU",
+        "description": "Largest, highest-quality FLUX.2 option. Supports up to 50 steps and usually benefits from guidance around 3.5, but requires H100-class GPU memory.",
         "default_steps": 28,
         "max_steps": 50,
         "pipeline_class": "Flux2Pipeline",
         "vram": "~80GB",
         "distilled": False,
-        "default_guidance": 3.5
+        "default_guidance": 3.5,
+        "requires_auth": True,
+        "access_note": "Gated Hugging Face model. You must accept access on Hugging Face, authenticate the backend, and have H100-class GPU memory."
     }
 }
 
@@ -131,7 +166,10 @@ def load_model(model_key: str):
     if model_key not in AVAILABLE_MODELS:
         raise ValueError(f"Unknown model: {model_key}")
     
-    if model_state.current_model == model_key and model_state.pipeline is not None:
+    current_pipeline = getattr(model_state, "pipeline", None)
+    model_state.pipeline = current_pipeline
+
+    if model_state.current_model == model_key and current_pipeline is not None:
         logger.info(f"Model {model_key} already loaded")
         return
     
@@ -141,16 +179,37 @@ def load_model(model_key: str):
     
     logger.info(f"Loading model: {model_id}")
     logger.info(f"Device: {model_state.device}, dtype: {model_state.dtype}")
+
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+    auth_kwargs = {}
+    if hf_token:
+        auth_kwargs["token"] = hf_token
+
+    # Validate gated repo access before unloading a working model.
+    if model_info.get("requires_auth"):
+        try:
+            from huggingface_hub import model_info as hf_model_info
+            hf_model_info(model_id, token=hf_token)
+        except Exception as e:
+            error_text = str(e)
+            raise PermissionError(
+                f"{model_info['name']} could not be loaded from Hugging Face. "
+                f"{model_info.get('access_note', '')} Original error: {error_text}"
+            ) from e
     
     # Clear previous model from memory
-    if model_state.pipeline is not None:
-        del model_state.pipeline
+    if current_pipeline is not None:
+        del current_pipeline
+        model_state.pipeline = None
+        model_state.current_model = None
+        model_state.current_lora = None
+        model_state.current_lora_scale = 1.0
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     
     try:
         # Import the appropriate pipeline class
-        from diffusers import Flux2KleinPipeline, Flux2Pipeline
+        from diffusers import Flux2KleinPipeline, Flux2Pipeline, Flux2Transformer2DModel
         
         if pipeline_class_name == "Flux2KleinPipeline":
             PipelineClass = Flux2KleinPipeline
@@ -163,10 +222,24 @@ def load_model(model_key: str):
         pinned_revision = model_info.get("revision", None)
         if pinned_revision:
             logger.info(f"Using pinned revision: {pinned_revision}")
+
+        pipeline_kwargs = dict(auth_kwargs)
+        transformer_id = model_info.get("transformer_id")
+        if transformer_id:
+            logger.info(f"Loading transformer override: {transformer_id}")
+            transformer = Flux2Transformer2DModel.from_pretrained(
+                transformer_id,
+                subfolder=model_info.get("transformer_subfolder"),
+                torch_dtype=model_state.dtype,
+                **auth_kwargs,
+            )
+            pipeline_kwargs["transformer"] = transformer
+
         model_state.pipeline = PipelineClass.from_pretrained(
             model_id,
             torch_dtype=model_state.dtype,
             revision=pinned_revision,
+            **pipeline_kwargs,
         )
         
         # Enable memory optimizations
@@ -177,6 +250,12 @@ def load_model(model_key: str):
         
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
+        error_text = str(e)
+        if any(marker in error_text for marker in ["401", "403", "gated repo", "restricted", "Repository Not Found"]):
+            raise PermissionError(
+                f"{model_info['name']} could not be loaded from Hugging Face. "
+                f"{model_info.get('access_note', '')} Original error: {error_text}"
+            ) from e
         raise
 
 # =============================================================================
@@ -239,6 +318,7 @@ def load_upscaler():
 
 class GenerateRequest(BaseModel):
     prompt: str
+    model: Optional[str] = None
     negative_prompt: Optional[str] = ""
     width: Optional[int] = 1024
     height: Optional[int] = 1024
@@ -306,6 +386,30 @@ def stitch_images(image1: Image.Image, image2: Image.Image) -> Image.Image:
     new_image.paste(img2_resized, (new_w1, 0))
     
     return new_image
+
+def clamp_dimensions_to_multiple(
+    width: int,
+    height: int,
+    max_side: Optional[int],
+    min_side: int = 512,
+    multiple: int = 64,
+) -> tuple[int, int]:
+    """Fit dimensions to a max side and round to model-friendly multiples."""
+    if max_side and max(width, height) > max_side:
+        scale = max_side / max(width, height)
+        width = int(width * scale)
+        height = int(height * scale)
+
+    width = max(min_side, int(round(width / multiple) * multiple))
+    height = max(min_side, int(round(height / multiple) * multiple))
+
+    if max_side:
+        width = min(width, max_side)
+        height = min(height, max_side)
+
+    width = max(multiple, (width // multiple) * multiple)
+    height = max(multiple, (height // multiple) * multiple)
+    return width, height
 
 def get_available_loras() -> List[str]:
     """Scan the 'loras' directory for .safetensors files."""
@@ -406,8 +510,13 @@ app = FastAPI(
 # CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for local dev
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -444,9 +553,14 @@ async def list_models():
         models.append({
             "key": key,
             "name": info["name"],
+            "model_id": info["id"],
+            "transformer_id": info.get("transformer_id"),
             "description": info["description"],
             "default_steps": info["default_steps"],
+            "max_steps": info["max_steps"],
             "vram": info["vram"],
+            "requires_auth": info.get("requires_auth", False),
+            "access_note": info.get("access_note", ""),
             "loaded": model_state.current_model == key
         })
     return {"models": models, "current": model_state.current_model}
@@ -464,16 +578,21 @@ def switch_model(request: ModelSwitchRequest):
         return {"success": True, "model": request.model}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
 @app.post("/api/generate", response_model=GenerateResponse)
 def generate_image(request: GenerateRequest):
     """Generate one or more images from a text prompt using FLUX.2."""
-    if model_state.pipeline is None:
-        raise HTTPException(status_code=503, detail="No model loaded")
-    
     try:
+        if request.model and request.model != model_state.current_model:
+            load_model(request.model)
+
+        if getattr(model_state, "pipeline", None) is None:
+            raise RuntimeError("No model loaded")
+
         # Determine number of steps and guidance
         model_info = AVAILABLE_MODELS[model_state.current_model]
         num_steps = request.num_inference_steps or model_info["default_steps"]
@@ -565,9 +684,15 @@ def generate_image(request: GenerateRequest):
 
 @app.post("/api/img2img", response_model=GenerateResponse)
 def image_to_image(
-    image: UploadFile = File(...),
+    image: Optional[UploadFile] = File(None),
     image2: Optional[UploadFile] = File(None), # Second optional image
+    reference_images: Optional[List[UploadFile]] = File(None),
+    reference_roles: Optional[List[str]] = Form(None),
+    reference_resolution_mode: str = Form("balanced_1024"),
+    output_resolution_mode: str = Form("generated"),
+    prompt_mode: str = Form("composed"),
     prompt: str = Form(...),
+    model: Optional[str] = Form(None),
     negative_prompt: str = Form(""),
     strength: float = Form(0.75),
     num_inference_steps: Optional[int] = Form(None),
@@ -580,33 +705,63 @@ def image_to_image(
     lora_scale: float = Form(1.0)
 ):
     """Edit an image using FLUX.2 with a text prompt. Supports multiple inputs via stitching."""
-    if model_state.pipeline is None:
-        raise HTTPException(status_code=503, detail="No model loaded")
-    
     try:
-        # Load the first image
-        image_data = image.file.read()
-        init_image = Image.open(io.BytesIO(image_data)).convert("RGB")
-        
-        # Load second image if present
-        if image2:
-            image2_data = image2.file.read()
-            img2 = Image.open(io.BytesIO(image2_data)).convert("RGB")
-            logger.info("Second image received. Stitching images...")
-            init_image = stitch_images(init_image, img2)
+        if model and model != model_state.current_model:
+            load_model(model)
+
+        if getattr(model_state, "pipeline", None) is None:
+            raise RuntimeError("No model loaded")
+
+        uploaded_references = list(reference_images or [])
+        if not uploaded_references and image is not None:
+            uploaded_references.append(image)
+            if image2 is not None:
+                uploaded_references.append(image2)
+
+        if not uploaded_references:
+            raise RuntimeError("At least one reference image is required for Image to Image mode")
+
+        reference_roles = list(reference_roles or [])
+        while len(reference_roles) < len(uploaded_references):
+            reference_roles.append("reference")
+
+        reference_items = []
+        for index, uploaded_image in enumerate(uploaded_references[:4]):
+            image_data = uploaded_image.file.read()
+            reference_items.append({
+                "image": Image.open(io.BytesIO(image_data)).convert("RGB"),
+                "role": reference_roles[index].strip().lower() if index < len(reference_roles) else "reference",
+                "slot": index + 1,
+            })
+
+        primary_index = next(
+            (index for index, item in enumerate(reference_items) if item["role"] == "primary"),
+            0,
+        )
+        if primary_index != 0:
+            reference_items.insert(0, reference_items.pop(primary_index))
+
+        init_image = reference_items[0]["image"]
         
         # Save original dimensions so we can resize the output back
         original_width, original_height = init_image.size
         
-        # Resize to supported dimensions for model compatibility
-        width, height = original_width, original_height
-        # Round to nearest 64 for model compatibility
-        width = (width // 64) * 64
-        height = (height // 64) * 64
-        width = max(512, min(width, 1280))
-        height = max(512, min(height, 1280))
+        resolution_caps = {
+            "preview_768": 768,
+            "balanced_1024": 1024,
+            "quality_1280": 1280,
+            "source": 1280,
+        }
+        max_side = resolution_caps.get(reference_resolution_mode, 1024)
+        width, height = clamp_dimensions_to_multiple(original_width, original_height, max_side)
         if width != init_image.width or height != init_image.height:
             init_image = init_image.resize((width, height), Image.LANCZOS)
+        model_reference_images = [init_image]
+        for item in reference_items[1:]:
+            ref_image = item["image"]
+            if ref_image.size != (width, height):
+                ref_image = ref_image.resize((width, height), Image.LANCZOS)
+            model_reference_images.append(ref_image)
         
         # Determine number of steps and guidance
         model_info = AVAILABLE_MODELS[model_state.current_model]
@@ -625,7 +780,19 @@ def image_to_image(
         # Manage LoRA loading BEFORE generation loop
         manage_lora(model_state.pipeline, lora_name, lora_scale)
         
-        logger.info(f"Img2Img: {num_images} image(s), prompt='{prompt[:50]}...', steps={num_steps}, guidance={guidance}")
+        reference_prompt = prompt
+        role_summary = "; ".join(
+            f"Reference image {i + 1} from slot {item['slot']} is labeled {item['role']}"
+            for i, item in enumerate(reference_items[:len(model_reference_images)])
+        )
+        if prompt_mode == "original" and role_summary:
+            logger.info(f"Img2Img prompt mode is original; role labels available but not appended: {role_summary}")
+        elif prompt_mode not in {"composed", "roles"} and role_summary:
+            reference_prompt = (
+                f"{prompt}\n\nReference control instructions: {role_summary}."
+            )
+
+        logger.info(f"Img2Img: {num_images} image(s), references={len(model_reference_images)} ({role_summary}), prompt_mode={prompt_mode}, size={width}x{height}, output_mode={output_resolution_mode}, prompt='{prompt[:50]}...', steps={num_steps}, guidance={guidance}")
         if lora_name:
              logger.info(f"Using LoRA: {lora_name} (scale={lora_scale})")
         
@@ -653,8 +820,8 @@ def image_to_image(
 
             # Generate image (FLUX.2 Klein uses image as reference, doesn't use strength)
             result = model_state.pipeline(
-                prompt=prompt,
-                image=init_image,
+                prompt=reference_prompt,
+                image=model_reference_images,
                 width=width,
                 height=height,
                 num_inference_steps=num_steps,
@@ -666,8 +833,8 @@ def image_to_image(
             
             output_image = result.images[0]
             
-            # Resize output to match original source dimensions exactly
-            if output_image.size != (original_width, original_height):
+            # Optionally resize output to match the primary reference dimensions.
+            if output_resolution_mode == "source" and output_image.size != (original_width, original_height):
                 output_image = output_image.resize((original_width, original_height), Image.LANCZOS)
             
             # Convert to base64

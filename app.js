@@ -73,19 +73,7 @@ navItems.forEach(item => {
 
 const modeButtons = document.querySelectorAll('.mode-btn');
 const img2imgUpload = document.getElementById('img2img-upload');
-const img2imgDropZone = document.getElementById('img2img-drop-zone');
-const img2imgFileInput = document.getElementById('img2img-file-input');
-const img2imgPreviewContainer = document.getElementById('img2img-preview-container');
-const img2imgPreview = document.getElementById('img2img-preview');
-const img2imgClear = document.getElementById('img2img-clear');
-const img2imgDownload = document.getElementById('img2img-download');
-
-const img2imgDropZone2 = document.getElementById('img2img-drop-zone-2');
-const img2imgFileInput2 = document.getElementById('img2img-file-input-2');
-const img2imgPreviewContainer2 = document.getElementById('img2img-preview-container-2');
-const img2imgPreview2 = document.getElementById('img2img-preview-2');
-const img2imgClear2 = document.getElementById('img2img-clear-2');
-const img2imgDownload2 = document.getElementById('img2img-download-2');
+const referenceSlotEls = Array.from(document.querySelectorAll('[data-ref-slot]'));
 const strengthSlider = document.getElementById('strength-slider');
 const strengthValue = document.getElementById('strength-value');
 const modelSelect = document.getElementById('model-select');
@@ -95,8 +83,24 @@ const loraScaleValue = document.getElementById('lora-scale-value');
 const loraScaleContainer = document.getElementById('lora-scale-container');
 const refreshLorasBtn = document.getElementById('refresh-loras-btn');
 const promptInput = document.getElementById('prompt-input');
+const promptComposer = document.getElementById('prompt-composer');
+const promptModeSelect = document.getElementById('prompt-mode-select');
+const promptRoleSummary = document.getElementById('prompt-role-summary');
+const composedPromptInput = document.getElementById('composed-prompt-input');
+const refreshComposedPromptBtn = document.getElementById('refresh-composed-prompt-btn');
+const copyComposedPromptBtn = document.getElementById('copy-composed-prompt-btn');
 const widthSelect = document.getElementById('width-select');
 const heightSelect = document.getElementById('height-select');
+const referenceResolutionSelect = document.getElementById('reference-resolution-select');
+const outputResolutionSelect = document.getElementById('output-resolution-select');
+const characterProfilePanel = document.getElementById('character-profile-panel');
+const characterProfileSelect = document.getElementById('character-profile-select');
+const characterProfileNameInput = document.getElementById('character-profile-name-input');
+const saveCharacterProfileBtn = document.getElementById('save-character-profile-btn');
+const loadCharacterProfileBtn = document.getElementById('load-character-profile-btn');
+const deleteCharacterProfileBtn = document.getElementById('delete-character-profile-btn');
+const characterIntentSelect = document.getElementById('character-intent-select');
+const characterProfileStatus = document.getElementById('character-profile-status');
 const stepsInput = document.getElementById('steps-input');
 const seedInput = document.getElementById('seed-input');
 const guidanceSlider = document.getElementById('guidance-slider');
@@ -176,9 +180,153 @@ const numImagesValue = document.getElementById('num-images-value');
 
 // Image Generator State
 let generatorMode = 'text2img'; // 'text2img' or 'img2img'
-let img2imgFile = null;
-let img2imgFile2 = null;
+const referenceSlots = referenceSlotEls.map((slotEl, index) => ({
+    index,
+    file: null,
+    objectUrl: null,
+    slotEl,
+    roleSelect: document.getElementById(`reference-role-${index}`),
+    dropZone: document.getElementById(`reference-drop-${index}`),
+    fileInput: document.getElementById(`reference-file-${index}`),
+    previewContainer: document.getElementById(`reference-preview-container-${index}`),
+    previewImage: document.getElementById(`reference-preview-${index}`),
+    clearBtn: document.getElementById(`reference-clear-${index}`),
+    downloadBtn: document.getElementById(`reference-download-${index}`),
+}));
 let generatedImages = []; // Array of {image: base64, seed: number}
+let selectedModelLoaded = false;
+
+const modelCompatibilityNote = document.getElementById('model-compat-note');
+let fluxModelApiInfo = {};
+const CHARACTER_PROFILE_STORAGE_KEY = 'fluxCharacterProfiles';
+
+const FLUX_MODEL_HELP = {
+    'klein-4b': {
+        label: 'FLUX.2 Klein 4B',
+        note: 'Fast default for drafts and everyday images. Works with Text to Image, Image to Image, LoRA, seed, guidance, and up to 8 steps. Best guidance is usually 1.0.',
+        defaultSteps: 4,
+        defaultGuidance: 1.0,
+        maxSteps: 8,
+    },
+    'klein-4b-fp8': {
+        label: 'FLUX.2 Klein 4B FP8',
+        note: 'FP8-derived Klein 4B transformer loaded through a Diffusers-compatible converted checkpoint. Works with the same controls as Klein 4B and is capped at 8 steps.',
+        defaultSteps: 4,
+        defaultGuidance: 1.0,
+        maxSteps: 8,
+    },
+    'klein-9b': {
+        label: 'FLUX.2 Klein 9B',
+        note: 'Higher-quality Klein model for more detail and better prompt understanding. Requires Hugging Face gated-model access and backend authentication. Uses more VRAM and is capped at 8 steps.',
+        defaultSteps: 4,
+        defaultGuidance: 1.0,
+        maxSteps: 8,
+        warning: 'Requires Hugging Face access approval and a backend token.',
+    },
+    dev: {
+        label: 'FLUX.2 Dev',
+        note: 'Highest-quality option. Requires Hugging Face gated-model access, backend authentication, and H100-class GPU memory. Supports up to 50 steps. Guidance around 3.5 is usually a better starting point than 1.0.',
+        defaultSteps: 28,
+        defaultGuidance: 3.5,
+        maxSteps: 50,
+        warning: 'Requires Hugging Face access approval, a backend token, and H100-class GPU memory.',
+    },
+};
+
+const REFERENCE_ROLE_TEXT = {
+    primary: {
+        label: 'Primary image',
+        instruction: 'Use this reference as the main canvas, subject placement, composition anchor, and overall scene structure.',
+        promptLine: 'Use reference image {n} as the primary canvas. Preserve its main composition, subject placement, perspective, and scene structure unless the prompt explicitly asks for a change.',
+    },
+    character: {
+        label: 'Character identity',
+        instruction: 'Preserve identity, facial structure, hair, body type, and recognizable character traits.',
+        promptLine: 'Use reference image {n} only for character identity. Preserve the face, hair, body type, age, and recognizable traits from this reference.',
+    },
+    pose: {
+        label: 'Pose / layout',
+        instruction: 'Use pose, gesture, body position, camera angle, and layout without copying identity.',
+        promptLine: 'Use reference image {n} only for pose, gesture, camera angle, framing, and body layout. Do not copy the person identity, clothing, face, or style from this pose reference.',
+    },
+    style: {
+        label: 'Style reference',
+        instruction: 'Use visual style, medium, lighting mood, color grading, and rendering treatment.',
+        promptLine: 'Use reference image {n} only for visual style, lighting, color grading, medium, texture, and rendering treatment.',
+    },
+    product: {
+        label: 'Product / object',
+        instruction: 'Preserve the object shape, proportions, markings, materials, and important product details.',
+        promptLine: 'Use reference image {n} for the product or object. Preserve its shape, proportions, markings, materials, and important design details.',
+    },
+    color: {
+        label: 'Color palette',
+        instruction: 'Use palette, color relationships, and dominant tones.',
+        promptLine: 'Use reference image {n} only for color palette, dominant tones, and color relationships.',
+    },
+    texture: {
+        label: 'Texture / material',
+        instruction: 'Use surface finish, fabric, grain, texture, and material cues.',
+        promptLine: 'Use reference image {n} only for surface texture, fabric, grain, material behavior, and finish.',
+    },
+    background: {
+        label: 'Background / scene',
+        instruction: 'Use environment, setting, depth, atmosphere, and scene context.',
+        promptLine: 'Use reference image {n} only for background, environment, setting, depth, atmosphere, and scene context.',
+    },
+    reference: {
+        label: 'Supporting reference',
+        instruction: 'Use as supporting visual context.',
+        promptLine: 'Use reference image {n} as supporting visual context.',
+    },
+};
+
+const CHARACTER_INTENT_TEXT = {
+    off: {
+        label: 'Off',
+        lines: [],
+    },
+    preserve_identity: {
+        label: 'Preserve same character',
+        lines: [
+            'Maintain the same character identity across the final image.',
+            'Preserve facial structure, hair, age, body type, and other recognizable identity markers from the character reference.',
+            'Do not blend the character identity with pose, style, or background references.',
+        ],
+    },
+    new_outfit: {
+        label: 'Same character, new outfit',
+        lines: [
+            'Keep the same character identity, face, hair, age, and body type.',
+            'Change only the outfit, styling, accessories, or wardrobe details requested by the prompt.',
+            'Do not change the character into a different person.',
+        ],
+    },
+    new_pose: {
+        label: 'Same character, new pose',
+        lines: [
+            'Keep the same character identity while changing pose, gesture, framing, or camera angle.',
+            'Use pose references only for body position and layout.',
+            'Do not copy identity from pose references.',
+        ],
+    },
+    new_scene: {
+        label: 'Same character, new scene',
+        lines: [
+            'Keep the same character identity while placing the character into the requested scene.',
+            'Adapt lighting and atmosphere to the new environment without changing the character.',
+            'Preserve recognizable face, hair, proportions, and character-defining details.',
+        ],
+    },
+    character_sheet: {
+        label: 'Character sheet',
+        lines: [
+            'Create a clean character sheet for the same character.',
+            'Show consistent identity across multiple views or expressions in one coherent sheet.',
+            'Use neutral lighting and clear full-body or portrait views unless the prompt says otherwise.',
+        ],
+    },
+};
 
 // =============================================================================
 // Progress Polling Utility
@@ -275,116 +423,527 @@ modeButtons.forEach(btn => {
         } else {
             img2imgUpload.classList.add('hidden');
         }
+
+        updateImageGenerationCompatibility();
+        updatePromptComposer({ force: false });
     });
 });
 
-// =============================================================================
-// Image Generator - Img2Img Upload
-// =============================================================================
+function updateImageGenerationCompatibility() {
+    const selectedModel = FLUX_MODEL_HELP[modelSelect.value];
+    const modeText = generatorMode === 'img2img'
+        ? 'Image to Image is active. Width and Height are ignored in this mode; the uploaded source image decides the working size. Strength is currently not applied by the backend.'
+        : 'Text to Image is active. Width and Height control the generated image size.';
 
-img2imgDropZone.addEventListener('click', () => img2imgFileInput.click());
-
-img2imgFileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        handleImg2ImgFile(e.target.files[0]);
+    if (modelCompatibilityNote && selectedModel) {
+        const warningText = selectedModel.warning ? ` ${selectedModel.warning}` : '';
+        const apiModelInfo = fluxModelApiInfo[modelSelect.value];
+        const accessText = apiModelInfo?.access_note ? ` ${apiModelInfo.access_note}` : '';
+        modelCompatibilityNote.textContent = `${selectedModel.note} ${modeText}${warningText}${accessText}`;
+        modelCompatibilityNote.classList.toggle('warning', Boolean(selectedModel.warning || generatorMode === 'img2img'));
     }
-});
 
-img2imgDropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    img2imgDropZone.classList.add('drag-over');
-});
-
-img2imgDropZone.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    img2imgDropZone.classList.remove('drag-over');
-});
-
-img2imgDropZone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    img2imgDropZone.classList.remove('drag-over');
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0 && isValidImageType(files[0])) {
-        handleImg2ImgFile(files[0]);
+    if (selectedModel) {
+        stepsInput.max = String(selectedModel.maxSteps);
+        stepsInput.placeholder = `Auto (${selectedModel.defaultSteps})`;
+        stepsInput.title = `This model accepts up to ${selectedModel.maxSteps} steps. Leave blank for its default.`;
+        if (stepsInput.value && Number(stepsInput.value) > selectedModel.maxSteps) {
+            stepsInput.value = String(selectedModel.maxSteps);
+        }
+        guidanceSlider.title = `Suggested starting guidance for ${selectedModel.label}: ${selectedModel.defaultGuidance}. Klein models usually prefer low guidance; Dev usually benefits from higher guidance.`;
     }
+
+    const img2imgActive = generatorMode === 'img2img';
+    [widthSelect, heightSelect].forEach(control => {
+        control.disabled = img2imgActive;
+        control.title = img2imgActive
+            ? 'Disabled in Image to Image mode because the backend uses the uploaded source image size instead.'
+            : 'Used in Text to Image mode to set the generated image size.';
+    });
+}
+
+async function syncCurrentFluxModel() {
+    try {
+        const response = await fetch(`${FLUX_API_BASE}/api/models`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        fluxModelApiInfo = Object.fromEntries((data.models || []).map(model => [model.key, model]));
+        if (data.current && FLUX_MODEL_HELP[data.current]) {
+            modelSelect.value = data.current;
+            selectedModelLoaded = true;
+        } else {
+            selectedModelLoaded = false;
+        }
+    } catch (error) {
+        selectedModelLoaded = false;
+        console.warn('Could not read current FLUX model:', error);
+    } finally {
+        updateImageGenerationCompatibility();
+    }
+}
+
+async function switchFluxModel() {
+    const selectedModel = modelSelect.value;
+    const modelInfo = FLUX_MODEL_HELP[selectedModel];
+    const apiModelInfo = fluxModelApiInfo[selectedModel];
+    generateBtn.disabled = true;
+    genStatus.classList.remove('hidden');
+    const accessText = apiModelInfo?.requires_auth ? ' This model is gated and requires Hugging Face authentication.' : '';
+    genStatusText.textContent = `Loading ${modelInfo?.label || 'selected FLUX.2 model'}...${accessText}`;
+
+    try {
+        const response = await fetch(`${FLUX_API_BASE}/api/load-model`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ model: selectedModel }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.success === false) {
+            throw new Error(result.detail || result.error || 'Model loading failed');
+        }
+
+        selectedModelLoaded = true;
+        genStatusText.textContent = `${modelInfo?.label || 'Selected model'} loaded.`;
+        setTimeout(() => genStatus.classList.add('hidden'), 1600);
+    } catch (error) {
+        selectedModelLoaded = false;
+        genStatusText.textContent = `Could not load ${modelInfo?.label || 'model'}: ${error.message}`;
+    } finally {
+        generateBtn.disabled = !selectedModelLoaded;
+        updateImageGenerationCompatibility();
+    }
+}
+
+modelSelect.addEventListener('change', () => {
+    selectedModelLoaded = false;
+    updateImageGenerationCompatibility();
+    switchFluxModel();
 });
 
-img2imgClear.addEventListener('click', () => {
-    img2imgFile = null;
-    img2imgFileInput.value = '';
-    img2imgPreviewContainer.classList.add('hidden');
-    img2imgDropZone.classList.remove('hidden');
-});
+syncCurrentFluxModel();
 
-if (img2imgDownload) {
-    img2imgDownload.addEventListener('click', (e) => {
+// =============================================================================
+// Image Generator - Multi-reference Upload
+// =============================================================================
+
+function getActiveReferenceSlots() {
+    return referenceSlots.filter(slot => slot.file);
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+}
+
+function imageElementFromDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = dataUrl;
+    });
+}
+
+async function fileToProfileDataUrl(file, maxSide = 768) {
+    const sourceDataUrl = await readFileAsDataUrl(file);
+    const image = await imageElementFromDataUrl(sourceDataUrl);
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+function dataUrlToFile(dataUrl, filename, fallbackType = 'image/png') {
+    const [header, base64Data] = dataUrl.split(',');
+    const mimeMatch = header.match(/data:(.*?);base64/);
+    const mimeType = mimeMatch?.[1] || fallbackType;
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    return new File([new Uint8Array(byteNumbers)], filename, { type: mimeType });
+}
+
+function getCharacterProfiles() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(CHARACTER_PROFILE_STORAGE_KEY) || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        console.warn('Could not read character profiles:', error);
+        return [];
+    }
+}
+
+function setCharacterProfiles(profiles) {
+    localStorage.setItem(CHARACTER_PROFILE_STORAGE_KEY, JSON.stringify(profiles));
+}
+
+function updateCharacterProfileStatus(message) {
+    if (characterProfileStatus) {
+        characterProfileStatus.textContent = message || 'Profiles are saved locally in this browser.';
+    }
+}
+
+function renderCharacterProfiles(selectedId = characterProfileSelect?.value || '') {
+    if (!characterProfileSelect) return;
+
+    const profiles = getCharacterProfiles().sort((a, b) => a.name.localeCompare(b.name));
+    characterProfileSelect.innerHTML = '';
+    if (profiles.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No saved profiles';
+        characterProfileSelect.appendChild(option);
+        return;
+    }
+
+    profiles.forEach(profile => {
+        const option = document.createElement('option');
+        option.value = profile.id;
+        option.textContent = `${profile.name} (${profile.references.length})`;
+        characterProfileSelect.appendChild(option);
+    });
+
+    if (selectedId && profiles.some(profile => profile.id === selectedId)) {
+        characterProfileSelect.value = selectedId;
+    }
+}
+
+async function saveCharacterProfile() {
+    const activeSlots = getActiveReferenceSlots();
+    if (activeSlots.length === 0) {
+        updateCharacterProfileStatus('Add at least one reference image before saving a profile.');
+        return;
+    }
+
+    const name = characterProfileNameInput?.value.trim() || `Character ${new Date().toLocaleString()}`;
+    const references = [];
+    for (const slot of activeSlots) {
+        references.push({
+            slotIndex: slot.index,
+            role: slot.roleSelect?.value || 'character',
+            fileName: slot.file.name.replace(/\.[^.]+$/, '.jpg'),
+            type: 'image/jpeg',
+            dataUrl: await fileToProfileDataUrl(slot.file),
+        });
+    }
+
+    const profiles = getCharacterProfiles();
+    const existingIndex = profiles.findIndex(profile => profile.name.toLowerCase() === name.toLowerCase());
+    const profile = {
+        id: existingIndex >= 0 ? profiles[existingIndex].id : `profile_${Date.now()}`,
+        name,
+        references,
+        createdAt: existingIndex >= 0 ? profiles[existingIndex].createdAt : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+        profiles[existingIndex] = profile;
+    } else {
+        profiles.push(profile);
+    }
+
+    setCharacterProfiles(profiles);
+    renderCharacterProfiles(profile.id);
+    updateCharacterProfileStatus(`Saved "${name}" locally with ${references.length} reference image${references.length === 1 ? '' : 's'}.`);
+}
+
+function loadCharacterProfile(profileId = characterProfileSelect?.value) {
+    const profile = getCharacterProfiles().find(item => item.id === profileId);
+    if (!profile) {
+        updateCharacterProfileStatus('Choose a saved profile to load.');
+        return;
+    }
+
+    referenceSlots.forEach(slot => clearReferenceSlot(slot.index, { silent: true }));
+    profile.references.slice(0, referenceSlots.length).forEach((reference, index) => {
+        const slotIndex = Math.min(index, referenceSlots.length - 1);
+        const slot = referenceSlots[slotIndex];
+        if (slot?.roleSelect) {
+            slot.roleSelect.value = reference.role || (slotIndex === 0 ? 'character' : 'reference');
+        }
+        setReferenceFile(
+            slotIndex,
+            dataUrlToFile(reference.dataUrl, reference.fileName || `profile_reference_${slotIndex + 1}.png`, reference.type),
+            { silent: true },
+        );
+    });
+
+    if (characterProfileNameInput) {
+        characterProfileNameInput.value = profile.name;
+    }
+    if (characterIntentSelect && characterIntentSelect.value === 'off') {
+        characterIntentSelect.value = 'preserve_identity';
+    }
+
+    updatePromptComposer({ force: true });
+    updateCharacterProfileStatus(`Loaded "${profile.name}" into the reference slots.`);
+}
+
+function deleteCharacterProfile() {
+    const profileId = characterProfileSelect?.value;
+    const profiles = getCharacterProfiles();
+    const profile = profiles.find(item => item.id === profileId);
+    if (!profile) {
+        updateCharacterProfileStatus('Choose a saved profile to delete.');
+        return;
+    }
+
+    setCharacterProfiles(profiles.filter(item => item.id !== profileId));
+    renderCharacterProfiles();
+    updateCharacterProfileStatus(`Deleted "${profile.name}" from local profiles.`);
+}
+
+function buildReferencePromptData() {
+    const activeSlots = getActiveReferenceSlots();
+    return activeSlots.map((slot, index) => {
+        const role = slot.roleSelect?.value || 'reference';
+        const roleText = REFERENCE_ROLE_TEXT[role] || REFERENCE_ROLE_TEXT.reference;
+        return {
+            index,
+            slotNumber: slot.index + 1,
+            imageNumber: index + 1,
+            role,
+            label: roleText.label,
+            instruction: roleText.instruction,
+            promptLine: roleText.promptLine.replace('{n}', String(index + 1)),
+            fileName: slot.file?.name || `Reference ${slot.index + 1}`,
+        };
+    });
+}
+
+function composePrompt({ mode = 'composed' } = {}) {
+    const basePrompt = promptInput.value.trim();
+    const references = buildReferencePromptData();
+    const intent = CHARACTER_INTENT_TEXT[characterIntentSelect?.value || 'off'] || CHARACTER_INTENT_TEXT.off;
+
+    if (mode === 'original' || generatorMode !== 'img2img' || references.length === 0) {
+        return basePrompt;
+    }
+
+    const roleLines = references.map(ref => ref.promptLine);
+    if (mode === 'roles') {
+        return [
+            basePrompt,
+            '',
+            'Reference control instructions:',
+            ...roleLines,
+            ...(intent.lines.length ? ['', `Character consistency intent: ${intent.label}`, ...intent.lines] : []),
+            'Do not swap identity, pose, style, product, color, texture, or background roles between references.',
+        ].filter(Boolean).join('\n');
+    }
+
+    const hasCharacter = references.some(ref => ref.role === 'character');
+    const hasPose = references.some(ref => ref.role === 'pose');
+    const hasPrimary = references.some(ref => ref.role === 'primary');
+    const guardrails = [
+        'Create one coherent, polished image that follows the user prompt and uses each reference only for its assigned role.',
+        hasPrimary ? 'Keep the primary reference as the strongest composition anchor.' : 'Use the first active reference as the main visual anchor when no primary reference is selected.',
+        hasCharacter ? 'Keep character identity consistent and avoid blending faces from other references.' : '',
+        hasPose ? 'Use pose references for body position and framing only; do not copy their identity unless the same reference is also labeled as character.' : '',
+        'Resolve conflicts in favor of the written prompt, then the primary image, then the role-specific references.',
+        'Avoid distorted anatomy, duplicated faces, mixed identities, unreadable text, and inconsistent lighting.',
+    ].filter(Boolean);
+
+    return [
+        basePrompt || 'Create a high-quality image using the provided references.',
+        '',
+        'Reference plan:',
+        ...roleLines,
+        ...(intent.lines.length ? ['', `Character consistency intent: ${intent.label}`, ...intent.lines] : []),
+        '',
+        'Composition and quality instructions:',
+        ...guardrails,
+    ].join('\n');
+}
+
+function updatePromptComposer({ force = false } = {}) {
+    if (!promptComposer) return;
+
+    const references = buildReferencePromptData();
+    const shouldShow = generatorMode === 'img2img';
+    promptComposer.classList.toggle('hidden', !shouldShow);
+    if (!shouldShow) return;
+
+    if (promptRoleSummary) {
+        if (references.length === 0) {
+            promptRoleSummary.innerHTML = '<span>No active reference images yet.</span>';
+        } else {
+            const intent = CHARACTER_INTENT_TEXT[characterIntentSelect?.value || 'off'] || CHARACTER_INTENT_TEXT.off;
+            const intentPill = intent.lines.length
+                ? `<span class="prompt-role-pill character-intent-pill" title="${escapeHtml(intent.lines.join(' '))}">${escapeHtml(intent.label)}</span>`
+                : '';
+            promptRoleSummary.innerHTML = references.map(ref => `
+                <span class="prompt-role-pill" title="${escapeHtml(ref.instruction)}">
+                    ${ref.imageNumber}. ${escapeHtml(ref.label)}
+                </span>
+            `).join('') + intentPill;
+        }
+    }
+
+    if (composedPromptInput && (force || !composedPromptInput.dataset.userEdited)) {
+        composedPromptInput.value = composePrompt({ mode: 'composed' });
+        composedPromptInput.dataset.userEdited = '';
+    }
+}
+
+function getPromptForGeneration() {
+    if (generatorMode !== 'img2img') return promptInput.value.trim();
+    const mode = promptModeSelect?.value || 'composed';
+    if (mode === 'composed') {
+        return (composedPromptInput?.value || composePrompt({ mode: 'composed' })).trim();
+    }
+    return composePrompt({ mode }).trim();
+}
+
+function setReferenceFile(slotIndex, file, { silent = false } = {}) {
+    const slot = referenceSlots[slotIndex];
+    if (!slot || !file || !isValidImageType(file)) return;
+
+    if (slot.objectUrl) {
+        URL.revokeObjectURL(slot.objectUrl);
+    }
+
+    slot.file = file;
+    slot.objectUrl = URL.createObjectURL(file);
+    slot.previewImage.src = slot.objectUrl;
+    slot.slotEl.classList.add('has-image');
+    slot.dropZone.classList.add('hidden');
+    slot.previewContainer.classList.remove('hidden');
+    if (!silent) updatePromptComposer({ force: false });
+}
+
+function clearReferenceSlot(slotIndex, { silent = false } = {}) {
+    const slot = referenceSlots[slotIndex];
+    if (!slot) return;
+
+    if (slot.objectUrl) {
+        URL.revokeObjectURL(slot.objectUrl);
+    }
+
+    slot.file = null;
+    slot.objectUrl = null;
+    slot.fileInput.value = '';
+    slot.previewImage.removeAttribute('src');
+    slot.slotEl.classList.remove('has-image');
+    slot.previewContainer.classList.add('hidden');
+    slot.dropZone.classList.remove('hidden');
+    if (!silent) updatePromptComposer({ force: false });
+}
+
+function setupReferenceSlot(slot) {
+    if (!slot.dropZone || !slot.fileInput) return;
+
+    slot.dropZone.addEventListener('click', () => slot.fileInput.click());
+
+    slot.fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            setReferenceFile(slot.index, e.target.files[0]);
+        }
+    });
+
+    slot.dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        slot.dropZone.classList.add('drag-over');
+    });
+
+    slot.dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        slot.dropZone.classList.remove('drag-over');
+    });
+
+    slot.dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        slot.dropZone.classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            setReferenceFile(slot.index, files[0]);
+        }
+    });
+
+    slot.clearBtn?.addEventListener('click', () => clearReferenceSlot(slot.index));
+
+    slot.downloadBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (img2imgPreview.src) downloadSourceImage(img2imgPreview.src, 'img2img_source_1.png');
+        if (slot.previewImage.src) {
+            downloadSourceImage(slot.previewImage.src, `reference_${slot.index + 1}.png`);
+        }
     });
+
+    slot.previewImage?.addEventListener('dblclick', () => showFullscreen(slot.previewImage.src));
+    slot.roleSelect?.addEventListener('change', () => updatePromptComposer({ force: false }));
 }
 
-function handleImg2ImgFile(file) {
-    img2imgFile = file;
-    const url = URL.createObjectURL(file);
-    img2imgPreview.src = url;
-    img2imgDropZone.classList.add('hidden');
-    img2imgPreviewContainer.classList.remove('hidden');
-}
+referenceSlots.forEach(setupReferenceSlot);
 
-// =============================================================================
-// Image Generator - Img2Img Upload (Image 2)
-// =============================================================================
-
-img2imgDropZone2.addEventListener('click', () => img2imgFileInput2.click());
-
-img2imgFileInput2.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        handleImg2ImgFile2(e.target.files[0]);
+promptInput.addEventListener('input', () => updatePromptComposer({ force: false }));
+promptModeSelect?.addEventListener('change', () => updatePromptComposer({ force: false }));
+composedPromptInput?.addEventListener('input', () => {
+    composedPromptInput.dataset.userEdited = 'true';
+});
+refreshComposedPromptBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (composedPromptInput) {
+        composedPromptInput.dataset.userEdited = '';
+    }
+    updatePromptComposer({ force: true });
+});
+copyComposedPromptBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (composedPromptInput?.value) {
+        promptInput.value = composedPromptInput.value;
+        composedPromptInput.dataset.userEdited = '';
+        updatePromptComposer({ force: true });
     }
 });
-
-img2imgDropZone2.addEventListener('dragover', (e) => {
+saveCharacterProfileBtn?.addEventListener('click', (e) => {
     e.preventDefault();
-    img2imgDropZone2.classList.add('drag-over');
-});
-
-img2imgDropZone2.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    img2imgDropZone2.classList.remove('drag-over');
-});
-
-img2imgDropZone2.addEventListener('drop', (e) => {
-    e.preventDefault();
-    img2imgDropZone2.classList.remove('drag-over');
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0 && isValidImageType(files[0])) {
-        handleImg2ImgFile2(files[0]);
-    }
-});
-
-img2imgClear2.addEventListener('click', () => {
-    img2imgFile2 = null;
-    img2imgFileInput2.value = '';
-    img2imgPreviewContainer2.classList.add('hidden');
-    img2imgDropZone2.classList.remove('hidden');
-});
-
-if (img2imgDownload2) {
-    img2imgDownload2.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (img2imgPreview2.src) downloadSourceImage(img2imgPreview2.src, 'img2img_source_2.png');
+    saveCharacterProfile().catch(error => {
+        console.error('Could not save character profile:', error);
+        updateCharacterProfileStatus('Could not save profile. The browser may be out of local storage space.');
     });
-}
-
-function handleImg2ImgFile2(file) {
-    img2imgFile2 = file;
-    const url = URL.createObjectURL(file);
-    img2imgPreview2.src = url;
-    img2imgDropZone2.classList.add('hidden');
-    img2imgPreviewContainer2.classList.remove('hidden');
-}
+});
+loadCharacterProfileBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    loadCharacterProfile();
+});
+deleteCharacterProfileBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    deleteCharacterProfile();
+});
+characterIntentSelect?.addEventListener('change', () => updatePromptComposer({ force: false }));
+characterProfileSelect?.addEventListener('change', () => {
+    const profile = getCharacterProfiles().find(item => item.id === characterProfileSelect.value);
+    updateCharacterProfileStatus(profile
+        ? `"${profile.name}" has ${profile.references.length} saved reference image${profile.references.length === 1 ? '' : 's'}.`
+        : 'Profiles are saved locally in this browser.');
+});
 
 // =============================================================================
 // Image Generator - Sliders
@@ -471,7 +1030,7 @@ promptInput.addEventListener('keydown', (e) => {
 });
 
 async function generateImage() {
-    const prompt = promptInput.value.trim();
+    const prompt = getPromptForGeneration();
     const numImages = parseInt(numImagesSlider.value);
 
     if (!prompt) {
@@ -479,8 +1038,10 @@ async function generateImage() {
         return;
     }
 
-    if (generatorMode === 'img2img' && !img2imgFile) {
-        showError('Please upload a source image for Image to Image mode');
+    const activeReferenceSlots = getActiveReferenceSlots();
+
+    if (generatorMode === 'img2img' && activeReferenceSlots.length === 0) {
+        showError('Please add at least one reference image for Image to Image mode');
         return;
     }
 
@@ -507,6 +1068,7 @@ async function generateImage() {
         if (generatorMode === 'text2img') {
             // Text to Image
             const requestBody = {
+                model: modelSelect.value,
                 prompt: prompt,
                 width: parseInt(widthSelect.value),
                 height: parseInt(heightSelect.value),
@@ -540,14 +1102,18 @@ async function generateImage() {
         } else {
             // Image to Image
             const formData = new FormData();
-            formData.append('image', img2imgFile);
-            if (img2imgFile2) {
-                formData.append('image2', img2imgFile2);
-            }
+            activeReferenceSlots.forEach(slot => {
+                formData.append('reference_images', slot.file);
+                formData.append('reference_roles', slot.roleSelect?.value || 'reference');
+            });
+            formData.append('model', modelSelect.value);
             formData.append('prompt', prompt);
+            formData.append('prompt_mode', promptModeSelect?.value || 'composed');
             formData.append('strength', strengthSlider.value);
             formData.append('guidance_scale', guidanceSlider.value);
             formData.append('num_images', numImages);
+            formData.append('reference_resolution_mode', referenceResolutionSelect?.value || 'balanced_1024');
+            formData.append('output_resolution_mode', outputResolutionSelect?.value || 'generated');
 
             if (stepsInput.value) {
                 formData.append('num_inference_steps', stepsInput.value);
@@ -865,14 +1431,6 @@ function closeFullscreen() {
 // Image Source Enlarge Listeners
 // =============================================================================
 
-// Img2Img Source 1
-if (img2imgPreview) {
-    img2imgPreview.addEventListener('dblclick', () => showFullscreen(img2imgPreview.src));
-}
-// Img2Img Source 2
-if (img2imgPreview2) {
-    img2imgPreview2.addEventListener('dblclick', () => showFullscreen(img2imgPreview2.src));
-}
 // Upscaler Source
 if (upscalePreview) {
     upscalePreview.addEventListener('dblclick', () => showFullscreen(upscalePreview.src));
@@ -899,23 +1457,24 @@ function createSlotModal() {
     slotModal.innerHTML = `
         <div class="modal-content">
             <h3 class="modal-title">Use as Source Image</h3>
-            <p class="modal-text">Which slot would you like to transfer this image to?</p>
-            <div class="modal-actions">
+            <p class="modal-text">Choose the reference role this image should fill.</p>
+            <div class="modal-actions slot-modal-grid">
                 <button class="btn btn-secondary" id="slot-modal-cancel">Cancel</button>
-                <button class="btn btn-primary" id="slot-modal-1">Slot 1</button>
-                <button class="btn btn-primary" id="slot-modal-2">Slot 2</button>
+                <button class="btn btn-primary" data-slot-target="0">Primary</button>
+                <button class="btn btn-primary" data-slot-target="1">Character</button>
+                <button class="btn btn-primary" data-slot-target="2">Pose</button>
+                <button class="btn btn-primary" data-slot-target="3">Style</button>
             </div>
         </div>
     `;
     document.body.appendChild(slotModal);
 
     const cancelBtn = slotModal.querySelector('#slot-modal-cancel');
-    const slot1Btn = slotModal.querySelector('#slot-modal-1');
-    const slot2Btn = slotModal.querySelector('#slot-modal-2');
 
     cancelBtn.addEventListener('click', closeSlotModal);
-    slot1Btn.addEventListener('click', () => transferPendingImageToSlot(1));
-    slot2Btn.addEventListener('click', () => transferPendingImageToSlot(2));
+    slotModal.querySelectorAll('[data-slot-target]').forEach(button => {
+        button.addEventListener('click', () => transferPendingImageToSlot(Number(button.dataset.slotTarget)));
+    });
 
     slotModal.addEventListener('click', (e) => {
         if (e.target === slotModal) closeSlotModal();
@@ -982,12 +1541,7 @@ function transferPendingImageToSlot(slotNumber) {
     const prefix = pendingTransferData.type === 'upscaled' ? 'upscaled' : 'generated';
     const file = new File([blob], `${prefix}_${imgData.seed}.png`, { type: 'image/png' });
 
-    // Transfer to appropriate slot
-    if (slotNumber === 1) {
-        handleImg2ImgFile(file);
-    } else {
-        handleImg2ImgFile2(file);
-    }
+    setReferenceFile(slotNumber, file);
 
     // Switch to Img2Img mode
     generatorMode = 'img2img';
@@ -1015,6 +1569,8 @@ function transferPendingImageToSlot(slotNumber) {
 
 // Initialize modal on load
 createSlotModal();
+renderCharacterProfiles();
+updatePromptComposer({ force: true });
 
 // =============================================================================
 // Video Generator - Configuration
